@@ -93,8 +93,22 @@
   var HISTORY_KEY = 'yahoo-map-saved';
   var HISTORY_MAX = 30;
 
+  var IS_ANDROID = /Android/i.test(navigator.userAgent);
+  var YAHOO_MAP_APP = 'jp.co.yahoo.android.apps.map';
+
   function mapUrl(address) {
-    return 'https://map.yahoo.co.jp/search?q=' + encodeURIComponent(address);
+    var web = 'https://map.yahoo.co.jp/search?q=' + encodeURIComponent(address);
+    if (!IS_ANDROID) return web;
+    // Androidではヤフーマップアプリで開く。アプリで開けないときはWeb版を開く
+    return 'intent://map.yahoo.co.jp/search?q=' + encodeURIComponent(address) +
+      '#Intent;scheme=https;package=' + YAHOO_MAP_APP +
+      ';S.browser_fallback_url=' + encodeURIComponent(web) + ';end';
+  }
+
+  // アプリで開くリンクは新しいタブを作らない
+  function setMapLink(a, address) {
+    a.href = mapUrl(address);
+    if (IS_ANDROID) a.removeAttribute('target'); else a.target = '_blank';
   }
 
   function loadHistory() {
@@ -112,8 +126,7 @@
     saved.forEach(function (address, i) {
       var li = document.createElement('li');
       var a = document.createElement('a');
-      a.href = mapUrl(address);
-      a.target = '_blank';
+      setMapLink(a, address);
       a.rel = 'noopener';
       // 共通の「新潟県新潟市中央区」は省いて表示する
       a.textContent = address.indexOf(PREFIX) === 0 ? address.slice(PREFIX.length) : address;
@@ -153,7 +166,7 @@
 
   function update() {
     var address = input.value.trim();
-    search.href = mapUrl(address);
+    setMapLink(search, address);
   }
 
   // ボタンを押しても入力欄のフォーカス（キーボード）が外れないようにする
