@@ -94,15 +94,11 @@
   var HISTORY_MAX = 30;
 
   var IS_ANDROID = /Android/i.test(navigator.userAgent);
-  var YAHOO_MAP_APP = 'jp.co.yahoo.android.apps.map';
 
   function mapUrl(address) {
-    var web = 'https://map.yahoo.co.jp/search?q=' + encodeURIComponent(address);
-    if (!IS_ANDROID) return web;
-    // Androidではヤフーマップアプリで開く。アプリで開けないときはWeb版を開く
-    return 'intent://map.yahoo.co.jp/search?q=' + encodeURIComponent(address) +
-      '#Intent;scheme=https;package=' + YAHOO_MAP_APP +
-      ';S.browser_fallback_url=' + encodeURIComponent(web) + ';end';
+    // Androidでは geo: で地図アプリ（ヤフーマップ）を開く
+    if (IS_ANDROID) return 'geo:0,0?q=' + encodeURIComponent(address);
+    return 'https://map.yahoo.co.jp/search?q=' + encodeURIComponent(address);
   }
 
   // アプリで開くリンクは新しいタブを作らない

@@ -1,5 +1,5 @@
 // オフラインでも画面が開けるように、アプリのファイルをキャッシュする
-var CACHE = 'yahoo-map-v3';
+var CACHE = 'yahoo-map-v4';
 var FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
