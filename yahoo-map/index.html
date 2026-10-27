@@ -53,6 +53,14 @@
   .saved button { font: inherit; font-size: 18px; width: 40px; height: 40px; border: none; background: none;
     color: var(--muted); cursor: pointer; }
   .empty { color: var(--muted); font-size: .9rem; margin: 0; }
+  .chips.editing button { border-style: dashed; }
+  .chips.editing button::after { content: " ×"; color: var(--accent); font-weight: 700; }
+  .town-edit { display: grid; gap: 8px; }
+  .add-row { display: flex; gap: 8px; margin: 0; }
+  .add-row input { flex: 1; min-width: 0; font-size: 16px; padding: 10px 12px; }
+  .add-row button { font: inherit; font-size: 16px; padding: 10px 16px; border-radius: 8px; border: none;
+    background: var(--accent); color: var(--accent-fg); font-weight: 700; cursor: pointer; }
+  .hint { margin: 0; color: var(--muted); font-size: .85rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
 </style>
 </head>
 <body>
@@ -68,8 +76,18 @@
     </div>
   </div>
   <div class="field">
-    <span class="label">町名</span>
+    <div class="head">
+      <span class="label">町名</span>
+      <button type="button" class="clear" id="editTowns">編集</button>
+    </div>
     <div class="chips" id="towns"></div>
+    <div class="town-edit" id="townEdit" hidden>
+      <form class="add-row" id="addTownForm">
+        <input id="newTown" type="text" placeholder="追加する町名（例：上大川前通）" autocomplete="off">
+        <button type="submit">追加</button>
+      </form>
+      <p class="hint">町名の × で削除できます。<button type="button" class="clear" id="resetTowns">最初の町名にもどす</button></p>
+    </div>
   </div>
   <div class="field">
     <div class="head">
@@ -177,24 +195,85 @@
     input.setSelectionRange(len, len);
   }
 
-  TOWNS.forEach(function (name) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = name;
-    b.setAttribute('aria-pressed', 'false');
-    keepFocus(b);
-    b.addEventListener('click', function () {
-      towns.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
-      b.setAttribute('aria-pressed', 'true');
-      input.value = PREFIX + name;
-      // 数字キーボードに切り替える（表示中のキーボードを切り替えるため一度フォーカスを外す）
-      input.setAttribute('inputmode', 'numeric');
-      input.blur();
-      focusEnd();
-      update();
+  var TOWNS_KEY = 'yahoo-map-towns';
+  var editTownsBtn = document.getElementById('editTowns');
+  var townEdit = document.getElementById('townEdit');
+  var addTownForm = document.getElementById('addTownForm');
+  var newTown = document.getElementById('newTown');
+  var editing = false;
+
+  function loadTowns() {
+    try {
+      var list = JSON.parse(localStorage.getItem(TOWNS_KEY));
+      if (Array.isArray(list)) return list;
+    } catch (e) {}
+    return TOWNS.slice();
+  }
+
+  function saveTowns() {
+    try { localStorage.setItem(TOWNS_KEY, JSON.stringify(townList)); } catch (e) {}
+  }
+
+  var townList = loadTowns();
+
+  function renderTowns() {
+    towns.textContent = '';
+    towns.classList.toggle('editing', editing);
+    townList.forEach(function (name, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = name;
+      if (editing) {
+        b.setAttribute('aria-label', name + ' を削除');
+        b.addEventListener('click', function () {
+          townList.splice(i, 1);
+          saveTowns();
+          renderTowns();
+        });
+      } else {
+        b.setAttribute('aria-pressed', input.value === PREFIX + name ? 'true' : 'false');
+        keepFocus(b);
+        b.addEventListener('click', function () {
+          towns.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
+          b.setAttribute('aria-pressed', 'true');
+          input.value = PREFIX + name;
+          // 数字キーボードに切り替える（表示中のキーボードを切り替えるため一度フォーカスを外す）
+          input.setAttribute('inputmode', 'numeric');
+          input.blur();
+          focusEnd();
+          update();
+        });
+      }
+      towns.appendChild(b);
     });
-    towns.appendChild(b);
+  }
+
+  editTownsBtn.addEventListener('click', function () {
+    editing = !editing;
+    editTownsBtn.textContent = editing ? '完了' : '編集';
+    townEdit.hidden = !editing;
+    renderTowns();
   });
+
+  addTownForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = newTown.value.trim();
+    if (name && townList.indexOf(name) === -1) {
+      townList.push(name);
+      saveTowns();
+      renderTowns();
+    }
+    newTown.value = '';
+    newTown.focus();
+  });
+
+  document.getElementById('resetTowns').addEventListener('click', function () {
+    townList = TOWNS.slice();
+    saveTowns();
+    renderTowns();
+  });
+
+  renderTowns();
 
   document.querySelectorAll('[data-insert]').forEach(function (b) {
     keepFocus(b);
