@@ -42,7 +42,10 @@
     border: 1px solid var(--line); background: var(--field); color: var(--fg); cursor: pointer; }
   .tools a.search { flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 8px;
     background: var(--accent); color: var(--accent-fg); font-weight: 700; text-decoration: none; font-size: 16px; }
-  .tools a.search:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .tools a.search:focus-visible, .tools a.gsearch:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .tools a.gsearch { flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--field); color: var(--fg); font-weight: 700; text-decoration: none; font-size: 16px; }
+  .saved a.g { flex: none; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: .8rem; font-weight: 700; }
   .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .clear { font: inherit; font-size: .85rem; background: none; border: none; color: var(--muted);
     text-decoration: underline; cursor: pointer; padding: 4px; }
@@ -83,7 +86,8 @@
     <input id="address" type="text" value="新潟県新潟市中央区 " autocomplete="off">
     <div class="tools">
       <button type="button" data-insert="-">−（ハイフン）</button>
-      <a id="search" class="search" href="#" target="_blank" rel="noopener">検索</a>
+      <a id="search" class="search" href="#" target="_blank" rel="noopener">ヤフー</a>
+      <a id="gsearch" class="gsearch" href="#" target="_blank" rel="noopener">Google</a>
     </div>
   </div>
   <div class="field">
@@ -106,7 +110,7 @@
       <button type="button" class="clear" id="clear" hidden>すべて消す</button>
     </div>
     <ul class="saved" id="saved"></ul>
-    <p class="empty" id="empty">検索した住所がここに残ります。タップするともう一度ヤフーマップで開けます。</p>
+    <p class="empty" id="empty">検索した住所がここに残ります。住所をタップするとヤフーマップ、「Google」でGoogleマップが開きます。</p>
   </div>
 </main>
 
@@ -129,6 +133,12 @@
                '八千代','幸町','幸西','万代','三和町','天明町','沼垂西','沼垂東'];
   var input = document.getElementById('address');
   var search = document.getElementById('search');
+  var gsearch = document.getElementById('gsearch');
+
+  // Googleマップの公式URL。スマホではGoogleマップアプリで開く
+  function googleUrl(address) {
+    return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(address);
+  }
   var historyList = document.getElementById('saved');
   var empty = document.getElementById('empty');
   var clearBtn = document.getElementById('clear');
@@ -177,7 +187,15 @@
         saveHistory(saved);
         renderHistory();
       });
+      var g = document.createElement('a');
+      g.className = 'g';
+      g.href = googleUrl(address);
+      g.target = '_blank';
+      g.rel = 'noopener';
+      g.textContent = 'Google';
+      g.setAttribute('aria-label', address + ' をGoogleマップで開く');
       li.appendChild(a);
+      li.appendChild(g);
       li.appendChild(del);
       historyList.appendChild(li);
     });
@@ -195,6 +213,7 @@
   }
 
   search.addEventListener('click', function () { addHistory(input.value.trim()); });
+  gsearch.addEventListener('click', function () { addHistory(input.value.trim()); });
   clearBtn.addEventListener('click', function () {
     saved = [];
     saveHistory(saved);
@@ -205,6 +224,7 @@
   function update() {
     var address = input.value.trim();
     setMapLink(search, address);
+    gsearch.href = googleUrl(address);
   }
 
   // ボタンを押しても入力欄のフォーカス（キーボード）が外れないようにする
