@@ -35,6 +35,9 @@
   .tools { display: flex; gap: 8px; }
   .tools button { font: inherit; font-size: 16px; padding: 10px 16px; border-radius: 8px;
     border: 1px solid var(--line); background: var(--field); color: var(--fg); cursor: pointer; }
+  .tools a.search { flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 8px;
+    background: var(--accent); color: var(--accent-fg); font-weight: 700; text-decoration: none; font-size: 16px; }
+  .tools a.search:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
   a.btn { display: block; text-align: center; padding: 16px; border-radius: 8px; background: var(--accent);
     color: var(--accent-fg); font-weight: 700; text-decoration: none; font-size: 17px; }
   a.btn:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
@@ -50,7 +53,7 @@
     <input id="address" type="text" value="新潟県新潟市中央区 " autocomplete="off">
     <div class="tools">
       <button type="button" data-insert="-">−（ハイフン）</button>
-      <button type="button" id="back">⌫ 1文字消す</button>
+      <a id="search" class="search" href="#" target="_blank" rel="noopener">検索</a>
     </div>
   </div>
   <div class="field">
@@ -67,6 +70,7 @@
                '八千代','幸町','幸西','万代','三和町','天明町','沼垂西','沼垂東'];
   var input = document.getElementById('address');
   var go = document.getElementById('go');
+  var search = document.getElementById('search');
   var out = document.getElementById('url');
   var towns = document.getElementById('towns');
 
@@ -74,6 +78,7 @@
     var address = input.value.trim();
     var url = 'https://map.yahoo.co.jp/search?q=' + encodeURIComponent(address);
     go.href = url;
+    search.href = url;
     out.textContent = url;
   }
 
@@ -115,14 +120,6 @@
       focusEnd();
       update();
     });
-  });
-
-  var back = document.getElementById('back');
-  keepFocus(back);
-  back.addEventListener('click', function () {
-    if (input.value.length > PREFIX.length) input.value = input.value.slice(0, -1);
-    focusEnd();
-    update();
   });
 
   input.addEventListener('input', update);
