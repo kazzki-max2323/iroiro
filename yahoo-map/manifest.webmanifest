@@ -1,6 +1,7 @@
 {
   "name": "住所でヤフーマップ",
   "short_name": "住所マップ",
+  "id": "./?app=jusho-map",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
