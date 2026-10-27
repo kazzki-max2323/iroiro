@@ -38,10 +38,16 @@
   .tools a.search { flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 8px;
     background: var(--accent); color: var(--accent-fg); font-weight: 700; text-decoration: none; font-size: 16px; }
   .tools a.search:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
-  a.btn { display: block; text-align: center; padding: 16px; border-radius: 8px; background: var(--accent);
-    color: var(--accent-fg); font-weight: 700; text-decoration: none; font-size: 17px; }
-  a.btn:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
-  code { font-size: .8rem; color: var(--muted); word-break: break-all; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .clear { font: inherit; font-size: .85rem; background: none; border: none; color: var(--muted);
+    text-decoration: underline; cursor: pointer; padding: 4px; }
+  .saved { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .saved li { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
+  .saved a { flex: 1; min-width: 0; padding: 14px 4px; color: var(--fg); text-decoration: none; overflow-wrap: anywhere; }
+  .saved a:focus-visible, .clear:focus-visible, .saved button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .saved button { font: inherit; font-size: 18px; width: 40px; height: 40px; border: none; background: none;
+    color: var(--muted); cursor: pointer; }
+  .empty { color: var(--muted); font-size: .9rem; margin: 0; }
 </style>
 </head>
 <body>
@@ -60,8 +66,14 @@
     <span class="label">町名</span>
     <div class="chips" id="towns"></div>
   </div>
-  <a id="go" class="btn" href="#" target="_blank" rel="noopener">ヤフーマップで表示</a>
-  <code id="url"></code>
+  <div class="field">
+    <div class="head">
+      <span class="label">履歴</span>
+      <button type="button" class="clear" id="clear" hidden>すべて消す</button>
+    </div>
+    <ul class="saved" id="saved"></ul>
+    <p class="empty" id="empty">検索した住所がここに残ります。タップするともう一度ヤフーマップで開けます。</p>
+  </div>
 </main>
 
 <script>
@@ -69,17 +81,74 @@
   var TOWNS = ['東大通り','東万代','蒲原町','花園','明石','長嶺町','弁天','南万代町','春日町','水島町',
                '八千代','幸町','幸西','万代','三和町','天明町','沼垂西','沼垂東'];
   var input = document.getElementById('address');
-  var go = document.getElementById('go');
   var search = document.getElementById('search');
-  var out = document.getElementById('url');
+  var historyList = document.getElementById('saved');
+  var empty = document.getElementById('empty');
+  var clearBtn = document.getElementById('clear');
+  var HISTORY_KEY = 'yahoo-map-saved';
+  var HISTORY_MAX = 30;
+
+  function mapUrl(address) {
+    return 'https://map.yahoo.co.jp/search?q=' + encodeURIComponent(address);
+  }
+
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch (e) { return []; }
+  }
+
+  function saveHistory(items) {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(items)); } catch (e) {}
+  }
+
+  var saved = loadHistory();
+
+  function renderHistory() {
+    historyList.textContent = '';
+    saved.forEach(function (address, i) {
+      var li = document.createElement('li');
+      var a = document.createElement('a');
+      a.href = mapUrl(address);
+      a.target = '_blank';
+      a.rel = 'noopener';
+      // 共通の「新潟県新潟市中央区」は省いて表示する
+      a.textContent = address.indexOf(PREFIX) === 0 ? address.slice(PREFIX.length) : address;
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.textContent = '×';
+      del.setAttribute('aria-label', address + ' を履歴から消す');
+      del.addEventListener('click', function () {
+        saved.splice(i, 1);
+        saveHistory(saved);
+        renderHistory();
+      });
+      li.appendChild(a);
+      li.appendChild(del);
+      historyList.appendChild(li);
+    });
+    empty.hidden = saved.length > 0;
+    clearBtn.hidden = saved.length === 0;
+  }
+
+  function addHistory(address) {
+    if (!address || address === PREFIX.trim()) return;
+    saved = saved.filter(function (x) { return x !== address; });
+    saved.unshift(address);
+    saved = saved.slice(0, HISTORY_MAX);
+    saveHistory(saved);
+    renderHistory();
+  }
+
+  search.addEventListener('click', function () { addHistory(input.value.trim()); });
+  clearBtn.addEventListener('click', function () {
+    saved = [];
+    saveHistory(saved);
+    renderHistory();
+  });
   var towns = document.getElementById('towns');
 
   function update() {
     var address = input.value.trim();
-    var url = 'https://map.yahoo.co.jp/search?q=' + encodeURIComponent(address);
-    go.href = url;
-    search.href = url;
-    out.textContent = url;
+    search.href = mapUrl(address);
   }
 
   // ボタンを押しても入力欄のフォーカス（キーボード）が外れないようにする
@@ -124,6 +193,7 @@
 
   input.addEventListener('input', update);
   update();
+  renderHistory();
 </script>
 </body>
 </html>
