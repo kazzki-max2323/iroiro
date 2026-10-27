@@ -62,13 +62,8 @@
     border-color: var(--accent); position: relative; z-index: 1; }
   .chips.sorting button:not(.dragging) { transition: transform .1s; }
   @media (prefers-reduced-motion: reduce) { .chips button.dragging { transform: none; } }
-  .town-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-  .town-list li { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line); }
-  .town-list span { flex: 1; min-width: 0; padding: 10px 4px; overflow-wrap: anywhere; }
-  .town-list button { font: inherit; font-size: 16px; width: 44px; height: 40px; border: 1px solid var(--line);
-    border-radius: 6px; background: var(--field); color: var(--fg); cursor: pointer; }
-  .town-list button.del { border: none; background: none; color: var(--accent); font-size: 18px; }
-  .town-list button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .chips.editing button { border-style: dashed; }
+  .chips.editing button::after { content: " ×"; color: var(--accent); font-weight: 700; }
   .town-edit { display: grid; gap: 8px; }
   .add-row { display: flex; gap: 8px; margin: 0; }
   .add-row input { flex: 1; min-width: 0; font-size: 16px; padding: 10px 12px; }
@@ -111,8 +106,7 @@
         <input id="newTown" type="text" placeholder="追加する町名（例：上大川前通）" autocomplete="off">
         <button type="submit">追加</button>
       </form>
-      <p class="hint">×で削除できます。並べかえは町名ボタンの長押しで。<button type="button" class="clear" id="resetTowns">最初の町名にもどす</button></p>
-      <ul class="town-list" id="townRows"></ul>
+      <p class="hint">町名の × で削除できます。並べかえは編集を終えてから長押しで。<button type="button" class="clear" id="resetTowns">最初の町名にもどす</button></p>
     </div>
   </div>
   <div class="field">
@@ -271,41 +265,23 @@
 
   var townList = loadTowns();
 
-  var townRows = document.getElementById('townRows');
-
-  function rowButton(label, cls, aria, onClick) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.className = cls;
-    b.textContent = label;
-    b.setAttribute('aria-label', aria);
-    b.addEventListener('click', onClick);
-    return b;
-  }
-
   function renderTowns() {
-    // 編集中は縦の一覧（削除）、ふだんはボタン
-    towns.hidden = editing;
     towns.textContent = '';
-    townRows.textContent = '';
+    towns.classList.toggle('editing', editing);
     townList.forEach(function (name, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = name;
       if (editing) {
-        var li = document.createElement('li');
-        var label = document.createElement('span');
-        label.textContent = name;
-        var del = rowButton('×', 'del', name + ' を削除', function () {
+        b.setAttribute('aria-label', name + ' を削除');
+        b.addEventListener('click', function () {
           townList.splice(i, 1);
           saveTowns();
           renderTowns();
         });
-        li.appendChild(label);
-        li.appendChild(del);
-        townRows.appendChild(li);
+        towns.appendChild(b);
         return;
       }
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = name;
       b.setAttribute('aria-pressed', input.value === PREFIX + name ? 'true' : 'false');
       keepFocus(b);
       b.addEventListener('click', function () {
