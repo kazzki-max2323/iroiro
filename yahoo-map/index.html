@@ -53,6 +53,7 @@
   .saved button { font: inherit; font-size: 18px; width: 40px; height: 40px; border: none; background: none;
     color: var(--muted); cursor: pointer; }
   .empty { color: var(--muted); font-size: .9rem; margin: 0; }
+  [hidden] { display: none !important; }
   .chips.editing button { border-style: dashed; }
   .chips.editing button::after { content: " ×"; color: var(--accent); font-weight: 700; }
   .town-edit { display: grid; gap: 8px; }
@@ -68,7 +69,17 @@
 <main>
   <h1>住所でヤフーマップ</h1>
   <div class="field">
-    <label for="address">住所</label>
+    <div class="head">
+      <label for="address">住所</label>
+      <button type="button" class="clear" id="editBase">はじめの住所を編集</button>
+    </div>
+    <form class="town-edit" id="baseEdit" hidden>
+      <div class="add-row">
+        <input id="baseInput" type="text" placeholder="例：新潟県新潟市中央区" autocomplete="off">
+        <button type="submit">保存</button>
+      </div>
+      <p class="hint">町名ボタンを押したとき、この住所の後ろに町名が入ります。<button type="button" class="clear" id="resetBase">最初の住所にもどす</button></p>
+    </form>
     <input id="address" type="text" value="新潟県新潟市中央区 " autocomplete="off">
     <div class="tools">
       <button type="button" data-insert="-">−（ハイフン）</button>
@@ -100,7 +111,20 @@
 </main>
 
 <script>
-  var PREFIX = '新潟県新潟市中央区 ';
+  var DEFAULT_BASE = '新潟県新潟市中央区';
+  var BASE_KEY = 'yahoo-map-base';
+
+  function loadBase() {
+    try {
+      var v = localStorage.getItem(BASE_KEY);
+      if (v !== null) return v;
+    } catch (e) {}
+    return DEFAULT_BASE;
+  }
+
+  function prefixOf(base) { return base ? base + ' ' : ''; }
+
+  var PREFIX = prefixOf(loadBase());
   var TOWNS = ['東大通り','東万代','蒲原町','花園','明石','長嶺町','弁天','南万代町','春日町','水島町',
                '八千代','幸町','幸西','万代','三和町','天明町','沼垂西','沼垂東'];
   var input = document.getElementById('address');
@@ -275,6 +299,46 @@
 
   renderTowns();
 
+  var editBaseBtn = document.getElementById('editBase');
+  var baseEdit = document.getElementById('baseEdit');
+  var baseInput = document.getElementById('baseInput');
+
+  function setBase(base) {
+    var oldPrefix = PREFIX;
+    PREFIX = prefixOf(base);
+    try { localStorage.setItem(BASE_KEY, base); } catch (e) {}
+    // 入力欄の住所の頭も新しい住所に入れかえる
+    if (input.value.indexOf(oldPrefix) === 0) input.value = PREFIX + input.value.slice(oldPrefix.length);
+    else if (!input.value.trim()) input.value = PREFIX;
+    update();
+    renderTowns();
+    renderHistory();
+  }
+
+  function closeBaseEdit() {
+    baseEdit.hidden = true;
+    editBaseBtn.textContent = 'はじめの住所を編集';
+  }
+
+  editBaseBtn.addEventListener('click', function () {
+    if (!baseEdit.hidden) { closeBaseEdit(); return; }
+    baseInput.value = PREFIX.trim();
+    baseEdit.hidden = false;
+    editBaseBtn.textContent = 'やめる';
+    baseInput.focus();
+  });
+
+  baseEdit.addEventListener('submit', function (e) {
+    e.preventDefault();
+    setBase(baseInput.value.trim());
+    closeBaseEdit();
+  });
+
+  document.getElementById('resetBase').addEventListener('click', function () {
+    setBase(DEFAULT_BASE);
+    closeBaseEdit();
+  });
+
   document.querySelectorAll('[data-insert]').forEach(function (b) {
     keepFocus(b);
     b.addEventListener('click', function () {
@@ -285,6 +349,7 @@
   });
 
   input.addEventListener('input', update);
+  input.value = PREFIX;
   update();
   renderHistory();
 
