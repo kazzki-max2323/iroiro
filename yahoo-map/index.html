@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>住所でヤフーマップ</title>
+  <style>
+    body { font-family: sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
+    input { width: 100%; padding: 10px; font-size: 16px; box-sizing: border-box; }
+    button { margin-top: 12px; width: 100%; padding: 12px; font-size: 16px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>住所でヤフーマップ</h1>
+  <form id="form">
+    <input id="address" type="text" placeholder="例: 東京都千代田区丸の内1-9-1" required>
+    <button type="submit">ヤフーマップで表示</button>
+  </form>
+
+  <script>
+    document.getElementById('form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var address = document.getElementById('address').value.trim();
+      if (!address) return;
+      // Yahoo!マップの検索URLに住所を渡して開く
+      var url = 'https://map.yahoo.co.jp/search?q=' + encodeURIComponent(address);
+      window.open(url, '_blank');
+    });
+  </script>
+</body>
+</html>
