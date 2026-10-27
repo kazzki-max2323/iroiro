@@ -57,6 +57,11 @@
     color: var(--muted); cursor: pointer; }
   .empty { color: var(--muted); font-size: .9rem; margin: 0; }
   [hidden] { display: none !important; }
+  .chips button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .chips button.dragging { opacity: .75; transform: scale(1.1); box-shadow: 0 4px 12px rgba(0,0,0,.25);
+    border-color: var(--accent); position: relative; z-index: 1; }
+  .chips.sorting button:not(.dragging) { transition: transform .1s; }
+  @media (prefers-reduced-motion: reduce) { .chips button.dragging { transform: none; } }
   .town-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
   .town-list li { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line); }
   .town-list span { flex: 1; min-width: 0; padding: 10px 4px; overflow-wrap: anywhere; }
@@ -322,6 +327,7 @@
       b.setAttribute('aria-pressed', input.value === PREFIX + name ? 'true' : 'false');
       keepFocus(b);
       b.addEventListener('click', function () {
+        if (justDragged) return;
         towns.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
         b.setAttribute('aria-pressed', 'true');
         input.value = PREFIX + name;
@@ -334,6 +340,58 @@
       towns.appendChild(b);
     });
   }
+
+  // 町名ボタンを長押しすると、指で動かして並べかえられる
+  var LONG_PRESS_MS = 450;
+  var drag = null;
+  var justDragged = false;
+
+  function endDrag() {
+    if (!drag) return;
+    clearTimeout(drag.timer);
+    if (drag.active) {
+      drag.el.classList.remove('dragging');
+      towns.classList.remove('sorting');
+      townList = Array.prototype.map.call(towns.children, function (b) { return b.textContent; });
+      saveTowns();
+      justDragged = true;
+      setTimeout(function () { justDragged = false; }, 0);
+    }
+    drag = null;
+  }
+
+  towns.addEventListener('pointerdown', function (e) {
+    var b = e.target.closest('button');
+    if (!b || editing || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    drag = { el: b, x: e.clientX, y: e.clientY, active: false };
+    drag.timer = setTimeout(function () {
+      if (!drag) return;
+      drag.active = true;
+      b.classList.add('dragging');
+      towns.classList.add('sorting');
+      if (navigator.vibrate) { try { navigator.vibrate(30); } catch (err) {} }
+    }, LONG_PRESS_MS);
+  });
+
+  document.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    if (!drag.active) {
+      // 長押しの前に指が動いたらスクロールとみなしてやめる
+      if (Math.abs(e.clientX - drag.x) > 10 || Math.abs(e.clientY - drag.y) > 10) { clearTimeout(drag.timer); drag = null; }
+      return;
+    }
+    var over = document.elementFromPoint(e.clientX, e.clientY);
+    over = over && over.closest('#towns button');
+    if (!over || over === drag.el) return;
+    var kids = Array.prototype.indexOf.bind(towns.children);
+    towns.insertBefore(drag.el, kids(over) > kids(drag.el) ? over.nextSibling : over);
+  });
+
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', endDrag);
+  // 動かしている間は画面がスクロールしないようにする
+  towns.addEventListener('touchmove', function (e) { if (drag && drag.active) e.preventDefault(); }, { passive: false });
+  towns.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
   editTownsBtn.addEventListener('click', function () {
     editing = !editing;
