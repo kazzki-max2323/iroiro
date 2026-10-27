@@ -1,31 +1,132 @@
 <!doctype html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>住所でヤフーマップ</title>
-  <style>
-    body { font-family: sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
-    input { width: 100%; padding: 10px; font-size: 16px; box-sizing: border-box; }
-    button { margin-top: 12px; width: 100%; padding: 12px; font-size: 16px; cursor: pointer; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>住所でヤフーマップ</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+  /* Layout: one narrow column; address field, town chips, number helpers, big link button */
+  :root {
+    --bg: #f5f7f6; --fg: #1d2523; --muted: #5d6a66; --line: #c9d3cf;
+    --accent: #d1243a; --accent-fg: #ffffff; --field: #ffffff; --chip: #e6ecea;
+    --font: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #161b1a; --fg: #e8eeec; --muted: #9aa8a3; --line: #34403c;
+    --accent: #e8475b; --accent-fg: #ffffff; --field: #1f2624; --chip: #26302d; color-scheme: dark } }
+  :root[data-theme="dark"] {
+    --bg: #161b1a; --fg: #e8eeec; --muted: #9aa8a3; --line: #34403c;
+    --accent: #e8475b; --accent-fg: #ffffff; --field: #1f2624; --chip: #26302d; color-scheme: dark }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 16px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  main { max-width: 520px; margin: 0 auto; padding-block: 28px 40px; display: grid; gap: 18px; }
+  h1 { font-size: 1.4rem; margin: 0; text-wrap: balance; }
+  label, .label { font-weight: 700; font-size: .9rem; }
+  .field { display: grid; gap: 8px; }
+  input { font: inherit; font-size: 18px; padding: 14px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--field); color: var(--fg); width: 100%; box-sizing: border-box; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chips button { font: inherit; font-size: 15px; padding: 10px 14px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--chip); color: var(--fg); cursor: pointer; }
+  .chips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .chips button:focus-visible, .tools button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .tools { display: flex; gap: 8px; }
+  .tools button { font: inherit; font-size: 16px; padding: 10px 16px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--field); color: var(--fg); cursor: pointer; }
+  a.btn { display: block; text-align: center; padding: 16px; border-radius: 8px; background: var(--accent);
+    color: var(--accent-fg); font-weight: 700; text-decoration: none; font-size: 17px; }
+  a.btn:focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
+  code { font-size: .8rem; color: var(--muted); word-break: break-all; }
+</style>
 </head>
 <body>
-  <h1>住所でヤフーマップ</h1>
-  <form id="form">
-    <input id="address" type="text" placeholder="例: 東京都千代田区丸の内1-9-1" required>
-    <button type="submit">ヤフーマップで表示</button>
-  </form>
 
-  <script>
-    document.getElementById('form').addEventListener('submit', function (e) {
-      e.preventDefault();
-      var address = document.getElementById('address').value.trim();
-      if (!address) return;
-      // Yahoo!マップの検索URLに住所を渡して開く
-      var url = 'https://map.yahoo.co.jp/search?q=' + encodeURIComponent(address);
-      window.open(url, '_blank');
+<main>
+  <h1>住所でヤフーマップ</h1>
+  <div class="field">
+    <label for="address">住所</label>
+    <input id="address" type="text" value="新潟県新潟市 " autocomplete="off">
+    <div class="tools">
+      <button type="button" data-insert="-">−（ハイフン）</button>
+      <button type="button" id="back">⌫ 1文字消す</button>
+    </div>
+  </div>
+  <div class="field">
+    <span class="label">町名</span>
+    <div class="chips" id="towns"></div>
+  </div>
+  <a id="go" class="btn" href="#" target="_blank" rel="noopener">ヤフーマップで表示</a>
+  <code id="url"></code>
+</main>
+
+<script>
+  var PREFIX = '新潟県新潟市 ';
+  var TOWNS = ['東大通り','東万代','蒲原','花園','明石','長峰','弁天','南万代','春日','水島',
+               '八千代','幸町','幸西','万代','三和','天明','沼垂西','沼垂東'];
+  var input = document.getElementById('address');
+  var go = document.getElementById('go');
+  var out = document.getElementById('url');
+  var towns = document.getElementById('towns');
+
+  function update() {
+    var address = input.value.trim();
+    var url = 'https://map.yahoo.co.jp/search?q=' + encodeURIComponent(address);
+    go.href = url;
+    out.textContent = url;
+  }
+
+  // ボタンを押しても入力欄のフォーカス（キーボード）が外れないようにする
+  function keepFocus(btn) {
+    btn.addEventListener('pointerdown', function (e) { e.preventDefault(); });
+    btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+  }
+
+  function focusEnd() {
+    var len = input.value.length;
+    input.focus();
+    input.setSelectionRange(len, len);
+  }
+
+  TOWNS.forEach(function (name) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = name;
+    b.setAttribute('aria-pressed', 'false');
+    keepFocus(b);
+    b.addEventListener('click', function () {
+      towns.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
+      b.setAttribute('aria-pressed', 'true');
+      input.value = PREFIX + name;
+      // 数字キーボードに切り替える（表示中のキーボードを切り替えるため一度フォーカスを外す）
+      input.setAttribute('inputmode', 'numeric');
+      input.blur();
+      focusEnd();
+      update();
     });
-  </script>
+    towns.appendChild(b);
+  });
+
+  document.querySelectorAll('[data-insert]').forEach(function (b) {
+    keepFocus(b);
+    b.addEventListener('click', function () {
+      input.value += b.getAttribute('data-insert');
+      focusEnd();
+      update();
+    });
+  });
+
+  var back = document.getElementById('back');
+  keepFocus(back);
+  back.addEventListener('click', function () {
+    if (input.value.length > PREFIX.length) input.value = input.value.slice(0, -1);
+    focusEnd();
+    update();
+  });
+
+  input.addEventListener('input', update);
+  update();
+</script>
 </body>
 </html>
