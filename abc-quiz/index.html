@@ -222,11 +222,11 @@ const starHtml = n => [0,1,2].map(i => i < n ? '<span>★</span>' : '<span class
 // and on iPhone it is not silenced by the mute switch the way Web Audio is.
 // One element per channel: once a tap has started it, iOS lets it play again from timers.
 const voiceEl = new Audio(), sfxEl = new Audio();
-for (const n of [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'ok', 'ng', 'clear']) { const a = new Audio(`sounds/${n}.mp3`); a.preload = 'auto'; }
+for (const n of [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'ok', 'ng', 'clear']) { const a = new Audio(`sounds/${n}.mp3?v=2`); a.preload = 'auto'; }
 
 function play(el, name, onFail) {
   el.pause();
-  el.src = `sounds/${name}.mp3`;
+  el.src = `sounds/${name}.mp3?v=2`;
   const p = el.play();
   if (p && p.catch) p.catch(() => onFail && onFail());
 }
