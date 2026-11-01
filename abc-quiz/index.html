@@ -98,6 +98,7 @@
   .speaker.upper { flex-direction: column; gap: 0; font-size: 1.4rem; line-height: 1; }
   .speaker.upper .big { font-family: var(--abc); font-size: 4.6rem; }
   .speaker.upper .big.hira { font-family: var(--ui); font-size: 4rem; font-weight: 900; }
+  .speaker.upper .big.hira.two { font-size: 2.9rem; letter-spacing: -.04em; }
   .speaker.talking { animation: pulse .6s ease-in-out; }
   .prompt { font-size: 1.15rem; min-height: 1.6em; text-align: center; }
   .hint { font-size: 1.6rem; font-weight: 900; color: var(--c); min-height: 1.4em; }
@@ -106,6 +107,7 @@
     border: 4px solid transparent; position: relative; }
   .choice .glyph { font-family: var(--abc); font-size: min(26vw, 7rem); line-height: 1; }
   .choice.long .glyph { font-size: min(17vw, 4.6rem); }
+  .choice.xlong .glyph { font-size: min(12vw, 3.3rem); }
   .choice .kana { font-size: 1.1rem; height: 1.4em; color: var(--ok); }
   .choice.correct { border-color: var(--ok); box-shadow: 0 6px 0 var(--ok); background: #eafbe9; animation: pop .35s; }
   .choice.correct .glyph { color: var(--ok); }
@@ -234,16 +236,26 @@ const DROWS = [
   ['がぎぐげご', 'ga gi gu ge go', 1], ['ざじずぜぞ', 'za ji zu ze zo', 2], ['だぢづでど', 'da dji dzu de do', 3],
   ['ばびぶべぼ', 'ba bi bu be bo', 5], ['ぱぴぷぺぽ', 'pa pi pu pe po', 5],
 ].map(([kana, ro, base]) => ({ kana, items: ro.split(' '), base }));
+// Youon (きゃ…): base kana + small ゃゅょ. sh/ch/j drop the y (sha, cha, ja).
+const YROWS = [['き', 'ki', 'ky'], ['し', 'shi', 'sh'], ['ち', 'chi', 'ch'], ['に', 'ni', 'ny'], ['ひ', 'hi', 'hy'],
+  ['み', 'mi', 'my'], ['り', 'ri', 'ry'], ['ぎ', 'gi', 'gy'], ['じ', 'ji', 'j'], ['び', 'bi', 'by'], ['ぴ', 'pi', 'py']];
+const SMALL = [['ゃ', 'a'], ['ゅ', 'u'], ['ょ', 'o']];
+const YINFO = {};   // kya → { kana: 'き', ro: 'ki', small: 'ゃ', big: 'kiya' }
+YROWS.forEach(([kana, ro, pre]) => SMALL.forEach(([small, v]) => YINFO[pre + v] = { kana, ro, small, v, big: ro + 'y' + v }));
+const YSTAGES = [['きゃ・しゃ', 'ky sh'], ['ちゃ・にゃ', 'ch ny'], ['ひゃ・みゃ・りゃ', 'hy my ry'], ['ぎゃ・じゃ', 'gy j'], ['びゃ・ぴゃ', 'by py']]
+  .map(([kana, pres]) => ({ kana, items: pres.split(' ').flatMap(pre => SMALL.map(([, v]) => pre + v)) }));
 const DISP = { dji: 'ji', dzu: 'zu' };
 const disp = item => DISP[item] || item;
 const SOUND = { wo: 'o', dji: 'ji', dzu: 'zu' };      // を=お, ぢ=じ, づ=ず
 const HIRA = {}, BASE = {};
 ROWS.forEach(r => r.items.forEach((ro, i) => HIRA[ro] = r.kana[i]));
 DROWS.forEach(r => r.items.forEach((ro, i) => { HIRA[ro] = r.kana[i]; BASE[ro] = ROWS[r.base].items[i]; }));
+for (const [ro, y] of Object.entries(YINFO)) HIRA[ro] = y.kana + y.small;
 // Spellings that don't follow "consonant + vowel" — shown on the learn card.
 const SPECIAL = { shi: 'si とも かくよ', chi: 'ti とも かくよ', tsu: 'tu とも かくよ', fu: 'hu とも かくよ',
   wo: 'おとは「お」と おなじ', n: 'n だけで「ん」', ji: 'zi とも かくよ',
   dji: '「じ」と おなじ ji<br>キーボードでは di', dzu: '「ず」と おなじ zu<br>キーボードでは du' };
+const YNOTE = { sh: 'sya とも かくよ', ch: 'tya とも かくよ', j: 'zya・jya とも かくよ' };
 const VOWEL = ro => disp(ro).at(-1) === 'n' ? '' : disp(ro).at(-1);
 const CONS = ro => disp(ro).slice(0, -1);
 const RC = ['#ff6b4a', '#ff9f1c', '#2fb36b', '#3d9bff', '#9b6bff', '#ff5c9a', '#14a3a3', '#e0a800', '#7a8cff'];
@@ -266,10 +278,14 @@ const STAGES = [
   ...DROWS.map((r, i) => ({ id: 'd' + i, sec: 'daku', letters: r.items, kana: r.kana, base: r.base, c: RC[i], cd: RCD[i],
                             needs: [i ? 'd' + (i - 1) : 'r' + (ROWS.length - 1)] })),
   { id: 'dmix', sec: 'daku', letters: DROWS.flatMap(r => r.items), kana: 'が〜ぽ', c: C[5][0], cd: C[5][1], all: true, needs: ['d' + (DROWS.length - 1)] },
+  // youon opens after the dakuon rows
+  ...YSTAGES.map((r, i) => ({ id: 'y' + i, sec: 'yoon', letters: r.items, kana: r.kana, c: RC[i], cd: RCD[i],
+                              needs: [i ? 'y' + (i - 1) : 'd' + (DROWS.length - 1)] })),
+  { id: 'ymix', sec: 'yoon', letters: YSTAGES.flatMap(r => r.items), kana: 'きゃ〜ぴょ', c: C[5][0], cd: C[5][1], all: true, needs: ['y' + (YSTAGES.length - 1)] },
 ];
 const SECTIONS = { upper: ['おおもじ', 'ABC'], lower: ['こもじ', 'abc'], romaji: ['ローマじ', 'ka ki ku'],
-  daku: ['てんてん・まる', 'ga za pa'] };
-const kanaSec = sec => sec === 'romaji' || sec === 'daku';
+  daku: ['てんてん・まる', 'ga za pa'], yoon: ['ちいさい ゃゅょ', 'kya sha'] };
+const kanaSec = sec => sec === 'romaji' || sec === 'daku' || sec === 'yoon';
 const isRomaji = () => kanaSec(STAGES[stageIdx].sec);
 // weak-letter memory: romaji "a" must not share a slot with lowercase "a"
 const wkey = item => (isRomaji() ? 'r:' : '') + item;
@@ -340,6 +356,7 @@ function setColors(st) { document.body.style.setProperty('--c', st.c); document.
 
 function stageLabel(st) {
   if (st.pair) return { big: 'B → b', sub: 'おおもじと こもじの ペア' };
+  if (st.sec === 'yoon') return { big: st.kana, sub: st.all ? 'ぜんぶ ミックス' : st.letters.filter(l => l.endsWith('a')).join(' ') + ' …' };
   if (kanaSec(st.sec)) return { big: st.kana, sub: st.all ? 'ぜんぶ ミックス' : st.letters.map(disp).join(' ') };
   if (st.all) return { big: st.sec === 'upper' ? 'A〜Z' : 'a〜z', sub: 'ぜんぶ ミックス' };
   return { big: st.letters.join(''), sub: `${st.letters[0]} 〜 ${st.letters.at(-1)}` };
@@ -347,6 +364,7 @@ function stageLabel(st) {
 function lockedHint(st) {
   if (st.id === 'r0') return 'こもじを ぜんぶ クリアしてね';
   if (st.id === 'd0') return 'ローマじ（あ〜ん）を ぜんぶ クリアしてね';
+  if (st.id === 'y0') return 'てんてん・まるを ぜんぶ クリアしてね';
   if (st.sec === 'lower' && st.needs.some(id => !id.startsWith('l') && !(save.stars[id] > 0)))
     return `${STAGES.find(s => s.id === st.needs.find(id => !id.startsWith('l')))?.letters.join('')} の あとで`;
   return 'まえを クリアしてね';
@@ -395,8 +413,14 @@ function drawLearn(dir = 0) {
     // "か" big, then how it's built: k + a (or a note for the irregular ones)
     $('learnKana').textContent = HIRA[ch];
     $('learnPair').hidden = false;
-    const how = SPECIAL[ch] || (CONS(ch) ? `${CONS(ch)} ＋ ${VOWEL(ch)}` : 'ローマじの もと（ぼいん）');
-    $('learnPair').innerHTML = SPECIAL[ch] || !CONS(ch) ? `<small>${how}</small>` : how;
+    const y = YINFO[ch];
+    if (y) {   // き ki ＋ ゃ ya → kya
+      $('learnPair').innerHTML = `${y.kana} ${y.ro} ＋ <span style="font-size:.8em">${y.small}</span> y${y.v}`
+        + (YNOTE[CONS(ch)] ? `<small>${YNOTE[CONS(ch)]}</small>` : '');
+    } else {
+      const how = SPECIAL[ch] || (CONS(ch) ? `${CONS(ch)} ＋ ${VOWEL(ch)}` : 'ローマじの もと（ぼいん）');
+      $('learnPair').innerHTML = SPECIAL[ch] || !CONS(ch) ? `<small>${how}</small>` : how;
+    }
   } else {
     $('learnKana').textContent = KANA[upper];
     $('learnPair').hidden = ch === upper;
@@ -508,6 +532,7 @@ function choicesFor(ans) {
   // never two choices that look the same (じ ji / ぢ ji)
   const pool = knownPool().filter(c => c === ans || disp(c) !== disp(ans)), set = new Set([ans]);
   if (BASE[ans] && pool.includes(BASE[ans])) set.add(BASE[ans]);   // が → always offer ka next to ga
+  if (YINFO[ans]) set.add(YINFO[ans].big);                          // きゃ → always offer kiya (= きや) next to kya
   // up to two look-/sound-alikes, favouring the first ones listed (the strongest look-alikes for lowercase).
   // romaji: same row (ka/ke) or same vowel (ka/sa)
   const near = isRomaji()
@@ -544,13 +569,17 @@ function nextQuestion() {
   // romaji: show the kana (and play it), pick its romaji
   sp.classList.toggle('upper', !!(pair || ro));
   sp.innerHTML = pair ? `<span class="big">${ans.toUpperCase()}</span><span>🔊</span>`
-               : ro ? `<span class="big hira">${HIRA[ans]}</span><span>🔊</span>` : '🔊';
+               : ro ? `<span class="big hira${HIRA[ans].length > 1 ? ' two' : ''}">${HIRA[ans]}</span><span>🔊</span>` : '🔊';
   $('prompt').textContent = pair ? `${ans.toUpperCase()} の こもじは どれ？` : ro ? `「${HIRA[ans]}」は ローマじで どれ？` : 'どれかな？';
   $('hint').textContent = '';
   const box = $('choices'); box.innerHTML = '';
-  for (const l of choicesFor(ans)) {
+  const opts = choicesFor(ans);
+  // one text size for all four, so the longest (the kiya trap) doesn't stand out
+  const longest = Math.max(...opts.map(l => disp(l).length));
+  const size = longest > 3 ? ' xlong' : longest > 1 ? ' long' : '';
+  for (const l of opts) {
     const b = document.createElement('button');
-    b.className = 'choice push' + (disp(l).length > 1 ? ' long' : '');
+    b.className = 'choice push' + size;
     b.innerHTML = `<span class="glyph">${disp(l)}</span><span class="kana"></span>`;
     onTap(b, () => answer(b, l, ans));
     box.appendChild(b);
@@ -587,7 +616,8 @@ async function answer(btn, picked, ans) {
     $('prompt').textContent = STAGES[stageIdx].pair ? 'おしい！ かたちを よく みてね' : 'おしい！ もういちど きいてみよう';
     // hint after a miss: katakana name for letters; for romaji, the first letter (not the whole answer)
     $('hint').textContent = !isRomaji() ? KANA[ans.toUpperCase()]
-      : ans === 'n' ? 'n 1もじだよ' : CONS(ans) ? `${disp(ans)[0]} で はじまるよ` : 'ぼいん 1もじだよ';
+      : ans === 'n' ? 'n 1もじだよ' : YINFO[ans] ? `${CONS(ans)} で はじまるよ`
+      : CONS(ans) ? `${disp(ans)[0]} で はじまるよ` : 'ぼいん 1もじだよ';
     await wait(500); if (token !== quizToken) return;
     speak();
   }
@@ -610,7 +640,7 @@ function finish() {
   nextIdx = next ? STAGES.indexOf(next) : -1;
   $('nextStage').hidden = !next;
   $('nextStage').textContent = !next ? '' : next.pair ? 'ペア ステージへ ▶' : next.all ? 'ぜんぶ ミックスへ ▶'
-    : next.sec !== STAGES[stageIdx].sec ? (next.sec === 'lower' ? 'こもじに チャレンジ ▶' : next.sec === 'romaji' ? 'ローマじに チャレンジ ▶' : next.sec === 'daku' ? 'てんてん・まるに チャレンジ ▶' : `おおもじ ${next.letters.join('')} へ ▶`)
+    : next.sec !== STAGES[stageIdx].sec ? (next.sec === 'lower' ? 'こもじに チャレンジ ▶' : next.sec === 'romaji' ? 'ローマじに チャレンジ ▶' : next.sec === 'daku' ? 'てんてん・まるに チャレンジ ▶' : next.sec === 'yoon' ? 'ちいさい ゃゅょに チャレンジ ▶' : `おおもじ ${next.letters.join('')} へ ▶`)
     : 'つぎの ステージへ ▶';
   show('result'); fanfare(); confetti();
 }
