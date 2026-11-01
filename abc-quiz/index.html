@@ -226,7 +226,7 @@ const voiceEl = new Audio(), sfxEl = new Audio();
 for (const n of [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'ok', 'ng', 'clear']) { const a = new Audio(`sounds/${n}.mp3?v=2`); a.preload = 'auto'; }
 
 function play(el, name, onFail) {
-  el.pause();
+  el.pause(); el.muted = false;
   el.src = `sounds/${name}.mp3?v=2`;
   const p = el.play();
   if (p && p.catch) p.catch(() => onFail && onFail());
@@ -237,6 +237,20 @@ function speakFallback(letter) {           // last resort if the mp3 can't play
   const u = new SpeechSynthesisUtterance(letter === 'A' ? 'ay' : letter);
   u.lang = 'en-US'; u.rate = 0.75;
   speechSynthesis.speak(u);
+}
+// Answers fire on touch-down, which iOS doesn't count as a gesture for starting audio.
+// So start the effects channel (muted) during the tap that opens the quiz; later plays are then allowed.
+function primeSfx() {
+  if (sfxEl.dataset.primed) return;
+  sfxEl.muted = true; sfxEl.src = 'sounds/ok.mp3?v=2';
+  const p = sfxEl.play();
+  const done = () => { sfxEl.pause(); sfxEl.muted = false; sfxEl.dataset.primed = '1'; };
+  p && p.then ? p.then(done, () => { sfxEl.muted = false; }) : done();
+}
+// React the moment a finger touches (not on release). Keyboard Enter/Space still works via click.
+function onTap(el, fn) {
+  el.addEventListener('pointerdown', e => { if (e.button === 0 && !el.disabled) fn(e); });
+  el.addEventListener('click', e => { if (e.detail === 0) fn(e); });
 }
 const say = letter => play(voiceEl, letter, () => speakFallback(letter));
 const chimeOk = () => play(sfxEl, 'ok');
@@ -388,6 +402,7 @@ function choicesFor(ans) {
 
 function startQuiz() {
   const st = STAGES[stageIdx]; setColors(st);
+  primeSfx();
   questions = buildQuestions(); qi = 0; firstTry = 0; missed = new Set();
   show('quiz'); nextQuestion();
 }
@@ -409,7 +424,7 @@ function nextQuestion() {
     const b = document.createElement('button');
     b.className = 'choice push';
     b.innerHTML = `<span class="glyph">${l}</span><span class="kana"></span>`;
-    b.onclick = () => answer(b, l, ans);
+    onTap(b, () => answer(b, l, ans));
     box.appendChild(b);
   }
   speak();
@@ -418,7 +433,7 @@ function speak() {
   const sp = $('speaker'); sp.classList.remove('talking'); sp.offsetWidth; sp.classList.add('talking');
   say(questions[qi]);
 }
-$('speaker').onclick = speak;
+onTap($('speaker'), speak);
 
 async function answer(btn, picked, ans) {
   const token = quizToken;
