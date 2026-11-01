@@ -17,7 +17,7 @@
     --abc: "Andika", "Zen Maru Gothic", sans-serif;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; }
+  html, body { margin: 0; height: 100%; overflow-x: hidden; }
   body { background: var(--bg); color: var(--fg); font-family: var(--ui); font-weight: 700;
     user-select: none; -webkit-user-select: none; overscroll-behavior: none;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
@@ -69,10 +69,11 @@
 
   /* Learn */
   .learn-card { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
-    border: 4px solid var(--c); box-shadow: 0 8px 0 var(--c); padding: 24px; }
+    border: 4px solid var(--c); box-shadow: 0 8px 0 var(--c); padding: 24px;
+    touch-action: pan-y; will-change: transform; }   /* horizontal drags are ours (swipe), vertical stays scroll */
   .learn-card .glyph { font-family: var(--abc); font-size: min(52vw, 15rem); line-height: 1; color: var(--c); }
   .learn-card .kana { font-size: 2.4rem; font-weight: 900; }
-  .learn-card .tap { color: var(--muted); font-size: .95rem; }
+  .learn-card .tap { color: var(--muted); font-size: .95rem; text-align: center; line-height: 1.7; }
   .learn-nav { display: flex; gap: 12px; }
   .learn-nav button { flex: 1; }
   .arrow { padding: 16px; font-size: 1.6rem; border-radius: 999px; }
@@ -140,7 +141,7 @@
   <button class="learn-card push" id="learnCard" aria-label="もういちど きく">
     <div class="glyph" id="learnGlyph">A</div>
     <div class="kana" id="learnKana">エー</div>
-    <div class="tap">🔊 タッチすると きこえるよ</div>
+    <div class="tap">🔊 タッチで きこえるよ<br>👆 よこに スワイプで つぎの もじ</div>
   </button>
   <div class="learn-nav">
     <button class="arrow push" id="prevBtn" aria-label="まえ">◀</button>
@@ -273,19 +274,81 @@ let learnPos = 0;
 function startLearn() {
   const st = STAGES[stageIdx]; setColors(st); learnPos = 0; show('learn'); drawLearn();
 }
-function drawLearn() {
+function drawLearn(dir = 0) {
   const L = STAGES[stageIdx].letters;
   $('learnGlyph').textContent = L[learnPos];
   $('learnKana').textContent = KANA[L[learnPos]];
   $('learnDots').innerHTML = [...L].map((_, i) => `<span class="dot ${i === learnPos ? 'now' : i < learnPos ? 'ok' : ''}"></span>`).join('');
   $('prevBtn').disabled = learnPos === 0;
   $('nextBtn').disabled = learnPos === L.length - 1;
-  const card = $('learnCard'); card.style.animation = 'none'; card.offsetWidth; card.style.animation = 'pop .35s';
+  const card = $('learnCard');
+  if (dir) {   // slide the new card in from the side it is coming from
+    card.style.animation = 'none';
+    card.animate([{ transform: `translateX(${dir * 70}%)`, opacity: 0 }, { transform: 'none', opacity: 1 }],
+                 { duration: 220, easing: 'cubic-bezier(.2,.8,.3,1)' });
+  } else { card.style.animation = 'none'; card.offsetWidth; card.style.animation = 'pop .35s'; }
   say(L[learnPos]);
 }
-$('learnCard').onclick = () => say(STAGES[stageIdx].letters[learnPos]);
-$('prevBtn').onclick = () => { learnPos--; drawLearn(); };
-$('nextBtn').onclick = () => { learnPos++; drawLearn(); };
+function goLearn(step) {
+  const n = STAGES[stageIdx].letters.length, to = learnPos + step;
+  if (to < 0 || to >= n) return false;
+  learnPos = to; drawLearn(step); return true;
+}
+$('prevBtn').onclick = () => goLearn(-1);
+$('nextBtn').onclick = () => goLearn(1);
+document.addEventListener('keydown', e => {
+  if ($('learn').hidden) return;
+  if (e.key === 'ArrowRight') goLearn(1);
+  if (e.key === 'ArrowLeft') goLearn(-1);
+});
+
+// Swipe: the card follows the finger; let go past the threshold (or flick) to change letter.
+// Swiping left = next letter, like turning a page. A plain tap still replays the sound.
+(() => {
+  const card = $('learnCard');
+  let x0 = 0, y0 = 0, t0 = 0, dx = 0, id = null, dragging = false, swallowClick = false;
+  card.addEventListener('pointerdown', e => {
+    id = e.pointerId; x0 = e.clientX; y0 = e.clientY; t0 = performance.now(); dx = 0; dragging = false;
+  });
+  card.addEventListener('pointermove', e => {
+    if (e.pointerId !== id) return;
+    const mx = e.clientX - x0, my = e.clientY - y0;
+    if (!dragging && Math.abs(mx) > 10 && Math.abs(mx) > Math.abs(my)) {
+      dragging = true; card.setPointerCapture(id); card.style.animation = 'none';
+    }
+    if (!dragging) return;
+    const n = STAGES[stageIdx].letters.length;
+    const atEdge = (mx > 0 && learnPos === 0) || (mx < 0 && learnPos === n - 1);
+    dx = atEdge ? mx * 0.25 : mx;                       // rubber-band at the first/last letter
+    card.style.transition = 'none';
+    card.style.transform = `translateX(${dx}px) rotate(${dx / 25}deg)`;
+  });
+  const end = e => {
+    if (e.pointerId !== id) return;
+    id = null;
+    if (!dragging) return;
+    swallowClick = true; setTimeout(() => swallowClick = false, 0);
+    const fast = Math.abs(dx) / (performance.now() - t0) > 0.5;   // px per ms
+    const step = (Math.abs(dx) > card.offsetWidth * 0.25 || (fast && Math.abs(dx) > 30)) ? (dx < 0 ? 1 : -1) : 0;
+    const n = STAGES[stageIdx].letters.length, ok = step && learnPos + step >= 0 && learnPos + step < n;
+    if (ok) {
+      card.style.transition = 'transform .16s ease-in, opacity .16s';
+      card.style.transform = `translateX(${-step * 120}%) rotate(${-step * 12}deg)`; card.style.opacity = '0';
+      setTimeout(() => {
+        card.style.transition = 'none'; card.style.transform = ''; card.style.opacity = '';
+        goLearn(step);
+      }, 160);
+    } else {
+      card.style.transition = 'transform .25s cubic-bezier(.3,1.6,.5,1)'; card.style.transform = '';
+    }
+  };
+  card.addEventListener('pointerup', end);
+  card.addEventListener('pointercancel', end);
+  card.addEventListener('click', e => {
+    if (swallowClick) { e.preventDefault(); return; }
+    say(STAGES[stageIdx].letters[learnPos]);
+  });
+})();
 $('toQuiz').onclick = () => startQuiz();
 
 // ---------- quiz ----------
