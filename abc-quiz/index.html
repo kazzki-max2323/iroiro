@@ -50,6 +50,7 @@
     display: grid; place-items: center; font-size: 1.5rem; font-weight: 900; }
   .stage .body { flex: 1; min-width: 0; }
   .stage .letters { font-family: var(--abc); font-size: 1.7rem; letter-spacing: .12em; line-height: 1.1; }
+  .stage .letters.kana { font-family: var(--ui); font-weight: 900; font-size: 1.5rem; letter-spacing: .04em; white-space: nowrap; }
   .stage .sub { font-size: .9rem; color: var(--muted); }
   .stars { color: #ffbf1f; font-size: 1.3rem; letter-spacing: .05em; white-space: nowrap; }
   .stars .off { color: #e8dccb; }
@@ -58,6 +59,7 @@
   .stage:disabled .letters, .stage:disabled .sub { color: #b9a994; }
   .section-head { display: flex; align-items: baseline; gap: 10px; margin: 10px 4px -4px; font-size: 1.2rem; font-weight: 900; }
   .section-head .abc { font-family: var(--abc); font-size: 1.5rem; color: var(--muted); letter-spacing: .08em; }
+  .parent { margin: 4px auto 0; font-size: .8rem; font-weight: 500; }
   .note { margin-top: auto; text-align: center; font-size: .82rem; color: var(--muted); font-weight: 500; line-height: 1.6; }
 
   /* Top bar used by learn & quiz */
@@ -77,6 +79,10 @@
   .learn-card .glyph { font-family: var(--abc); font-size: min(52vw, 15rem); line-height: 1; color: var(--c); }
   .learn-card .kana { font-size: 2.4rem; font-weight: 900; }
   .learn-card .pair { font-size: 1.1rem; color: var(--muted); }
+  .learn-card .glyph.long { font-size: min(32vw, 9.5rem); }
+  .learn-card .kana.hira { font-size: 3.4rem; }
+  .learn-card .pair.romaji { font-family: var(--abc); font-size: 1.6rem; color: var(--fg); }
+  .learn-card .pair.romaji small { font-family: var(--ui); font-size: 1rem; color: var(--muted); display: block; text-align: center; }
   .learn-card .pair b { font-family: var(--abc); font-size: 1.8rem; color: var(--fg); margin-left: 6px; }
   .learn-card .tap { color: var(--muted); font-size: .95rem; text-align: center; line-height: 1.7; }
   .learn-nav { display: flex; gap: 12px; }
@@ -91,6 +97,7 @@
   .speaker:active { transform: translateY(6px); box-shadow: 0 2px 0 var(--cd); }
   .speaker.upper { flex-direction: column; gap: 0; font-size: 1.4rem; line-height: 1; }
   .speaker.upper .big { font-family: var(--abc); font-size: 4.6rem; }
+  .speaker.upper .big.hira { font-family: var(--ui); font-size: 4rem; font-weight: 900; }
   .speaker.talking { animation: pulse .6s ease-in-out; }
   .prompt { font-size: 1.15rem; min-height: 1.6em; text-align: center; }
   .hint { font-size: 1.6rem; font-weight: 900; color: var(--c); min-height: 1.4em; }
@@ -98,6 +105,7 @@
   .choice { aspect-ratio: 1 / .9; display: flex; flex-direction: column; align-items: center; justify-content: center;
     border: 4px solid transparent; position: relative; }
   .choice .glyph { font-family: var(--abc); font-size: min(26vw, 7rem); line-height: 1; }
+  .choice.long .glyph { font-size: min(17vw, 4.6rem); }
   .choice .kana { font-size: 1.1rem; height: 1.4em; color: var(--ok); }
   .choice.correct { border-color: var(--ok); box-shadow: 0 6px 0 var(--ok); background: #eafbe9; animation: pop .35s; }
   .choice.correct .glyph { color: var(--ok); }
@@ -136,6 +144,7 @@
   </div>
   <div class="stages" id="stages"></div>
   <p class="note">おとが でないときは、スマホの おとを おおきくしてね</p>
+  <button class="ghost parent" id="openAll"></button>
 </section>
 
 <!-- LEARN -->
@@ -213,23 +222,47 @@ const confuse = l => l === l.toUpperCase() ? CONFUSE[l] : LOOK[l] + CONFUSE[l.to
 // needs = stages that must have at least one star before this one opens.
 const C = [['#ff6b4a','#d64a2c'], ['#ff9f1c','#d47d05'], ['#2fb36b','#1e8a4f'], ['#3d9bff','#1f76d1'], ['#9b6bff','#7546d6'], ['#ff5c9a','#d63a76']];
 const UP = ['ABCDE', 'FGHIJ', 'KLMNO', 'PQRST', 'UVWXYZ'];
+// Romaji (Hepburn, as on signs and keyboards). Each row is a stage; the sound is the Japanese kana.
+const ROWS = [
+  ['あいうえお', 'a i u e o'], ['かきくけこ', 'ka ki ku ke ko'], ['さしすせそ', 'sa shi su se so'],
+  ['たちつてと', 'ta chi tsu te to'], ['なにぬねの', 'na ni nu ne no'], ['はひふへほ', 'ha hi fu he ho'],
+  ['まみむめも', 'ma mi mu me mo'], ['らりるれろ', 'ra ri ru re ro'], ['やゆよわをん', 'ya yu yo wa wo n'],
+].map(([kana, ro]) => ({ kana, items: ro.split(' ') }));
+const HIRA = {};
+ROWS.forEach(r => r.items.forEach((ro, i) => HIRA[ro] = r.kana[i]));
+// Spellings that don't follow "consonant + vowel" — shown on the learn card.
+const SPECIAL = { shi: 'si とも かくよ', chi: 'ti とも かくよ', tsu: 'tu とも かくよ', fu: 'hu とも かくよ',
+  wo: 'おとは「お」と おなじ', n: 'n だけで「ん」' };
+const VOWEL = ro => ro.at(-1) === 'n' ? '' : ro.at(-1);
+const CONS = ro => ro.slice(0, -1);
+const RC = ['#ff6b4a', '#ff9f1c', '#2fb36b', '#3d9bff', '#9b6bff', '#ff5c9a', '#14a3a3', '#e0a800', '#7a8cff'];
+const RCD = ['#d64a2c', '#d47d05', '#1e8a4f', '#1f76d1', '#7546d6', '#d63a76', '#0b7c7c', '#b88a00', '#5566d6'];
+
+// letters = the items of a stage (single letters, or romaji syllables like "ka").
 const STAGES = [
-  ...UP.map((letters, i) => ({ id: String(i), sec: 'upper', letters, c: C[i][0], cd: C[i][1], needs: i ? [String(i - 1)] : [] })),
-  { id: '5', sec: 'upper', letters: UP.join(''), c: C[5][0], cd: C[5][1], all: true, needs: ['4'] },
+  ...UP.map((L, i) => ({ id: String(i), sec: 'upper', letters: [...L], c: C[i][0], cd: C[i][1], needs: i ? [String(i - 1)] : [] })),
+  { id: '5', sec: 'upper', letters: [...UP.join('')], c: C[5][0], cd: C[5][1], all: true, needs: ['4'] },
   // a lowercase stage opens once its uppercase partner and the previous lowercase stage are cleared
-  ...UP.map((L, i) => ({ id: 'l' + i, sec: 'lower', letters: L.toLowerCase(), c: C[i][0], cd: C[i][1],
+  ...UP.map((L, i) => ({ id: 'l' + i, sec: 'lower', letters: [...L.toLowerCase()], c: C[i][0], cd: C[i][1],
                          needs: i ? [String(i), 'l' + (i - 1)] : ['0'] })),
-  { id: 'lmix', sec: 'lower', letters: UP.join('').toLowerCase(), c: C[5][0], cd: C[5][1], all: true, needs: ['l4'] },
-  { id: 'pair', sec: 'lower', letters: UP.join('').toLowerCase(), c: '#14a3a3', cd: '#0b7c7c', all: true, pair: true, needs: ['l4'] },
+  { id: 'lmix', sec: 'lower', letters: [...UP.join('').toLowerCase()], c: C[5][0], cd: C[5][1], all: true, needs: ['l4'] },
+  { id: 'pair', sec: 'lower', letters: [...UP.join('').toLowerCase()], c: '#14a3a3', cd: '#0b7c7c', all: true, pair: true, needs: ['l4'] },
+  // romaji opens after all the lowercase rows, then goes row by row
+  ...ROWS.map((r, i) => ({ id: 'r' + i, sec: 'romaji', letters: r.items, kana: r.kana, c: RC[i], cd: RCD[i],
+                           needs: [i ? 'r' + (i - 1) : 'l4'] })),
+  { id: 'rmix', sec: 'romaji', letters: ROWS.flatMap(r => r.items), kana: 'あ〜ん', c: C[5][0], cd: C[5][1], all: true, needs: ['r' + (ROWS.length - 1)] },
 ];
-const SECTIONS = { upper: ['おおもじ', 'ABC'], lower: ['こもじ', 'abc'] };
+const SECTIONS = { upper: ['おおもじ', 'ABC'], lower: ['こもじ', 'abc'], romaji: ['ローマじ', 'ka ki ku'] };
+const isRomaji = () => STAGES[stageIdx].sec === 'romaji';
+// weak-letter memory: romaji "a" must not share a slot with lowercase "a"
+const wkey = item => (isRomaji() ? 'r:' : '') + item;
 
 // ---------- saved progress ----------
 const KEY = 'abc-quiz-v1';
 const save = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } })();
 save.stars ||= {}; save.weak ||= {};
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch {} };
-const unlocked = st => st.needs.every(id => (save.stars[id] || 0) > 0);
+const unlocked = st => save.openAll || st.needs.every(id => (save.stars[id] || 0) > 0);
 
 // ---------- helpers ----------
 const $ = id => document.getElementById(id);
@@ -271,7 +304,10 @@ function onTap(el, fn) {
   el.addEventListener('pointerdown', e => { if (e.button === 0 && !el.disabled) fn(e); });
   el.addEventListener('click', e => { if (e.detail === 0) fn(e); });
 }
-const say = letter => { const L = letter.toUpperCase(); play(voiceEl, L, () => speakFallback(L)); };
+const say = item => {
+  if (isRomaji()) return play(voiceEl, 'ja/' + (item === 'wo' ? 'o' : item));   // を sounds like お
+  const L = item.toUpperCase(); play(voiceEl, L, () => speakFallback(L));
+};
 const chimeOk = () => play(sfxEl, 'ok');
 const chimeNg = () => play(sfxEl, 'ng');
 const fanfare = () => play(sfxEl, 'clear');
@@ -279,6 +315,7 @@ const fanfare = () => play(sfxEl, 'clear');
 // ---------- screens ----------
 function show(id) {
   for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== id;
+  if (id !== 'result') $('confetti').innerHTML = '';
   window.scrollTo(0, 0);
 }
 let stageIdx = 0;
@@ -286,12 +323,14 @@ function setColors(st) { document.body.style.setProperty('--c', st.c); document.
 
 function stageLabel(st) {
   if (st.pair) return { big: 'B → b', sub: 'おおもじと こもじの ペア' };
+  if (st.sec === 'romaji') return { big: st.kana, sub: st.all ? 'ぜんぶ ミックス' : st.letters.join(' ') };
   if (st.all) return { big: st.sec === 'upper' ? 'A〜Z' : 'a〜z', sub: 'ぜんぶ ミックス' };
-  return { big: st.letters, sub: `${st.letters[0]} 〜 ${st.letters.at(-1)}` };
+  return { big: st.letters.join(''), sub: `${st.letters[0]} 〜 ${st.letters.at(-1)}` };
 }
 function lockedHint(st) {
+  if (st.id === 'r0') return 'こもじを ぜんぶ クリアしてね';
   if (st.sec === 'lower' && st.needs.some(id => !id.startsWith('l') && !(save.stars[id] > 0)))
-    return `${STAGES.find(s => s.id === st.needs.find(id => !id.startsWith('l')))?.letters} の あとで`;
+    return `${STAGES.find(s => s.id === st.needs.find(id => !id.startsWith('l')))?.letters.join('')} の あとで`;
   return 'まえを クリアしてね';
 }
 function renderHome() {
@@ -310,14 +349,16 @@ function renderHome() {
     b.disabled = !unlocked(st);
     const lb = stageLabel(st);
     b.innerHTML = `<div class="badge">${b.disabled ? '🔒' : (st.pair ? '⇄' : st.all ? '★' : n)}</div>
-      <div class="body"><div class="letters">${lb.big}</div>
+      <div class="body"><div class="letters${st.sec === 'romaji' ? ' kana' : ''}">${lb.big}</div>
       <div class="sub">${b.disabled ? lockedHint(st) : lb.sub}</div></div>
       <div class="stars">${starHtml(save.stars[st.id] || 0)}</div>`;
     b.onclick = () => { stageIdx = i; st.all ? startQuiz() : startLearn(); };
     box.appendChild(b);
   });
+  $('openAll').textContent = save.openAll ? 'おうちの かたへ：ロックを もとに もどす' : 'おうちの かたへ：ぜんぶの ステージを ひらく';
   show('home');
 }
+$('openAll').onclick = () => { save.openAll = !save.openAll; persist(); renderHome(); };
 document.querySelectorAll('[data-home]').forEach(b => b.onclick = () => { voiceEl.pause(); quizToken++; renderHome(); });
 
 // ---------- learn ----------
@@ -328,10 +369,21 @@ function startLearn() {
 function drawLearn(dir = 0) {
   const L = STAGES[stageIdx].letters;
   $('learnGlyph').textContent = L[learnPos];
-  const ch = L[learnPos], upper = ch.toUpperCase();
-  $('learnKana').textContent = KANA[upper];
-  $('learnPair').hidden = ch === upper;
-  $('learnPair').querySelector('b').textContent = upper;
+  const ch = L[learnPos], upper = ch.toUpperCase(), ro = isRomaji();
+  $('learnGlyph').classList.toggle('long', ch.length > 1);
+  $('learnKana').classList.toggle('hira', ro);
+  $('learnPair').classList.toggle('romaji', ro);
+  if (ro) {
+    // "か" big, then how it's built: k + a (or a note for the irregular ones)
+    $('learnKana').textContent = HIRA[ch];
+    $('learnPair').hidden = false;
+    const how = SPECIAL[ch] || (CONS(ch) ? `${CONS(ch)} ＋ ${VOWEL(ch)}` : 'ローマじの もと（ぼいん）');
+    $('learnPair').innerHTML = SPECIAL[ch] || !CONS(ch) ? `<small>${how}</small>` : how;
+  } else {
+    $('learnKana').textContent = KANA[upper];
+    $('learnPair').hidden = ch === upper;
+    $('learnPair').innerHTML = `おおもじは<b>${upper}</b>`;
+  }
   $('learnDots').innerHTML = [...L].map((_, i) => `<span class="dot ${i === learnPos ? 'now' : i < learnPos ? 'ok' : ''}"></span>`).join('');
   $('prevBtn').disabled = learnPos === 0;
   $('nextBtn').disabled = learnPos === L.length - 1;
@@ -412,10 +464,10 @@ function knownPool() {
   // Letters from this stage and the earlier ones of the same kind (upper/lower) — only letters the child has met.
   const st = STAGES[stageIdx];
   const same = STAGES.filter((s, i) => s.sec === st.sec && (st.all || i <= stageIdx));
-  return [...new Set(same.map(s => s.letters).join(''))];
+  return [...new Set(same.flatMap(s => s.letters))];
 }
 function weightedPick(letters) {
-  const w = letters.map(l => 1 + (save.weak[l] || 0) * 2);
+  const w = letters.map(l => 1 + (save.weak[wkey(l)] || 0) * 2);
   let r = Math.random() * w.reduce((a, b) => a + b, 0);
   for (let i = 0; i < letters.length; i++) { r -= w[i]; if (r <= 0) return letters[i]; }
   return letters.at(-1);
@@ -435,8 +487,11 @@ function buildQuestions() {
 }
 function choicesFor(ans) {
   const pool = knownPool(), set = new Set([ans]);
-  // up to two look-/sound-alikes, favouring the first ones listed (the strongest look-alikes for lowercase)
-  const near = [...confuse(ans)].filter(c => pool.includes(c) && c !== ans);
+  // up to two look-/sound-alikes, favouring the first ones listed (the strongest look-alikes for lowercase).
+  // romaji: same row (ka/ke) or same vowel (ka/sa)
+  const near = isRomaji()
+    ? shuffle(pool.filter(c => c !== ans && ((CONS(c) && CONS(c) === CONS(ans)) || (VOWEL(c) && VOWEL(c) === VOWEL(ans)))))
+    : [...confuse(ans)].filter(c => pool.includes(c) && c !== ans);
   shuffle(near.slice(0, 3)).slice(0, 2).forEach(c => set.add(c));
   const rest = shuffle(pool.filter(c => !set.has(c)));
   while (set.size < 4 && rest.length) set.add(rest.pop());
@@ -460,16 +515,18 @@ function nextQuestion() {
   wrongThisQ = false;
   const ans = questions[qi];
   drawDots(results);
-  const pair = STAGES[stageIdx].pair, sp = $('speaker');
+  const pair = STAGES[stageIdx].pair, ro = isRomaji(), sp = $('speaker');
   // pair stage: show the uppercase letter on the button and ask for its lowercase
-  sp.classList.toggle('upper', !!pair);
-  sp.innerHTML = pair ? `<span class="big">${ans.toUpperCase()}</span><span>🔊</span>` : '🔊';
-  $('prompt').textContent = pair ? `${ans.toUpperCase()} の こもじは どれ？` : 'どれかな？';
+  // romaji: show the kana (and play it), pick its romaji
+  sp.classList.toggle('upper', !!(pair || ro));
+  sp.innerHTML = pair ? `<span class="big">${ans.toUpperCase()}</span><span>🔊</span>`
+               : ro ? `<span class="big hira">${HIRA[ans]}</span><span>🔊</span>` : '🔊';
+  $('prompt').textContent = pair ? `${ans.toUpperCase()} の こもじは どれ？` : ro ? `「${HIRA[ans]}」は ローマじで どれ？` : 'どれかな？';
   $('hint').textContent = '';
   const box = $('choices'); box.innerHTML = '';
   for (const l of choicesFor(ans)) {
     const b = document.createElement('button');
-    b.className = 'choice push';
+    b.className = 'choice push' + (l.length > 1 ? ' long' : '');
     b.innerHTML = `<span class="glyph">${l}</span><span class="kana"></span>`;
     onTap(b, () => answer(b, l, ans));
     box.appendChild(b);
@@ -487,9 +544,9 @@ async function answer(btn, picked, ans) {
   if (picked === ans) {
     for (const b of $('choices').children) b.disabled = true;
     btn.classList.add('correct');
-    btn.querySelector('.kana').textContent = KANA[ans.toUpperCase()];
+    btn.querySelector('.kana').textContent = isRomaji() ? HIRA[ans] : KANA[ans.toUpperCase()];
     chimeOk();
-    if (!wrongThisQ) { firstTry++; save.weak[ans] = Math.max(0, (save.weak[ans] || 0) - 1); }
+    if (!wrongThisQ) { firstTry++; save.weak[wkey(ans)] = Math.max(0, (save.weak[wkey(ans)] || 0) - 1); }
     results[qi] = wrongThisQ ? 'miss' : 'ok';
     $('prompt').textContent = wrongThisQ ? 'できたね！' : ['せいかい！', 'すごい！', 'やったね！', 'ばっちり！'][Math.random() * 4 | 0];
     $('hint').textContent = '';
@@ -501,10 +558,12 @@ async function answer(btn, picked, ans) {
   } else {
     btn.disabled = true; btn.classList.add('wrong');
     chimeNg();
-    if (!wrongThisQ) { save.weak[ans] = Math.min(5, (save.weak[ans] || 0) + 1); missed.add(ans); persist(); }
+    if (!wrongThisQ) { save.weak[wkey(ans)] = Math.min(5, (save.weak[wkey(ans)] || 0) + 1); missed.add(ans); persist(); }
     wrongThisQ = true;
     $('prompt').textContent = STAGES[stageIdx].pair ? 'おしい！ かたちを よく みてね' : 'おしい！ もういちど きいてみよう';
-    $('hint').textContent = KANA[ans.toUpperCase()];   // katakana hint after a miss
+    // hint after a miss: katakana name for letters; for romaji, the first letter (not the whole answer)
+    $('hint').textContent = !isRomaji() ? KANA[ans.toUpperCase()]
+      : ans === 'n' ? 'n 1もじだよ' : CONS(ans) ? `${ans[0]} で はじまるよ` : 'ぼいん 1もじだよ';
     await wait(500); if (token !== quizToken) return;
     speak();
   }
@@ -527,7 +586,7 @@ function finish() {
   nextIdx = next ? STAGES.indexOf(next) : -1;
   $('nextStage').hidden = !next;
   $('nextStage').textContent = !next ? '' : next.pair ? 'ペア ステージへ ▶' : next.all ? 'ぜんぶ ミックスへ ▶'
-    : next.sec !== STAGES[stageIdx].sec ? (next.sec === 'lower' ? 'こもじに チャレンジ ▶' : `おおもじ ${next.letters} へ ▶`)
+    : next.sec !== STAGES[stageIdx].sec ? (next.sec === 'lower' ? 'こもじに チャレンジ ▶' : next.sec === 'romaji' ? 'ローマじに チャレンジ ▶' : `おおもじ ${next.letters.join('')} へ ▶`)
     : 'つぎの ステージへ ▶';
   show('result'); fanfare(); confetti();
 }
