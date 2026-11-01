@@ -127,7 +127,7 @@
     <p>おとを きいて もじを えらぼう</p>
   </div>
   <div class="stages" id="stages"></div>
-  <p class="note">おとが でないときは、マナーモード（サイレント）を<br>オフにして おとを おおきくしてね</p>
+  <p class="note">おとが でないときは、スマホの おとを おおきくしてね</p>
 </section>
 
 <!-- LEARN -->
@@ -218,40 +218,29 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const starHtml = n => [0,1,2].map(i => i < n ? '<span>★</span>' : '<span class="off">★</span>').join('');
 
 // ---------- sound ----------
-let voice = null;
-function pickVoice() {
-  const vs = speechSynthesis.getVoices();
-  voice = vs.find(v => /^en[-_]US/i.test(v.lang) && /Samantha|Google US|Aria|Jenny|Ava|Allison/i.test(v.name))
-       || vs.find(v => /^en[-_]US/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null;
-}
-if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+// Recorded mp3s (sounds/) played through <audio>. This works in in-app browsers that lack speechSynthesis,
+// and on iPhone it is not silenced by the mute switch the way Web Audio is.
+// One element per channel: once a tap has started it, iOS lets it play again from timers.
+const voiceEl = new Audio(), sfxEl = new Audio();
+for (const n of [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'ok', 'ng', 'clear']) { const a = new Audio(`sounds/${n}.mp3`); a.preload = 'auto'; }
 
-function say(letter) {
+function play(el, name, onFail) {
+  el.pause();
+  el.src = `sounds/${name}.mp3`;
+  const p = el.play();
+  if (p && p.catch) p.catch(() => onFail && onFail());
+}
+function speakFallback(letter) {           // last resort if the mp3 can't play
   if (!('speechSynthesis' in window)) return;
   speechSynthesis.cancel();
-  // A lone capital letter is read as its letter name ("ay", "bee"...). "A" alone can sound like the article, so spell it.
   const u = new SpeechSynthesisUtterance(letter === 'A' ? 'ay' : letter);
-  u.lang = 'en-US'; if (voice) u.voice = voice; u.rate = 0.75; u.pitch = 1.1;
+  u.lang = 'en-US'; u.rate = 0.75;
   speechSynthesis.speak(u);
 }
-
-let ac;
-function tones(notes, type = 'sine', gain = 0.18) {
-  try {
-    ac ||= new (window.AudioContext || window.webkitAudioContext)();
-    if (ac.state === 'suspended') ac.resume();
-    let t = ac.currentTime;
-    for (const [f, d] of notes) {
-      const o = ac.createOscillator(), g = ac.createGain();
-      o.type = type; o.frequency.value = f;
-      g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + d);
-      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + d); t += d * 0.7;
-    }
-  } catch {}
-}
-const chimeOk = () => tones([[1047, .14], [1319, .14], [1568, .3]], 'triangle');
-const chimeNg = () => tones([[330, .16], [262, .26]], 'sine', 0.14);
-const fanfare = () => tones([[784, .14], [988, .14], [1175, .14], [1568, .5]], 'triangle');
+const say = letter => play(voiceEl, letter, () => speakFallback(letter));
+const chimeOk = () => play(sfxEl, 'ok');
+const chimeNg = () => play(sfxEl, 'ng');
+const fanfare = () => play(sfxEl, 'clear');
 
 // ---------- screens ----------
 function show(id) {
@@ -277,7 +266,7 @@ function renderHome() {
   });
   show('home');
 }
-document.querySelectorAll('[data-home]').forEach(b => b.onclick = () => { window.speechSynthesis?.cancel(); quizToken++; renderHome(); });
+document.querySelectorAll('[data-home]').forEach(b => b.onclick = () => { voiceEl.pause(); quizToken++; renderHome(); });
 
 // ---------- learn ----------
 let learnPos = 0;
