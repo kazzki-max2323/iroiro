@@ -32,7 +32,10 @@
   input { font: inherit; font-size: 18px; padding: 14px; border: 1px solid var(--line); border-radius: 8px;
     background: var(--field); color: var(--fg); width: 100%; box-sizing: border-box; }
   input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  /* 改行の位置で次の行にするため、行の間は gap ではなく margin で空ける */
+  .chips { display: flex; flex-wrap: wrap; gap: 0 8px; margin-bottom: -8px; }
+  .chips > * { margin-bottom: 8px; }
+  .chips > .row-break { flex-basis: 100%; height: 0; margin: 0; }
   .chips button { font: inherit; font-size: 15px; padding: 10px 14px; border-radius: 999px;
     border: 1px solid var(--line); background: var(--chip); color: var(--fg); cursor: pointer; }
   .chips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
@@ -64,7 +67,10 @@
   @media (prefers-reduced-motion: reduce) { .chips button.dragging { transform: none; } }
   .chips.editing button { border-style: dashed; }
   .chips.editing button::after { content: " ×"; color: var(--accent); font-weight: 700; }
+  .chips.editing button.break-chip { flex-basis: 100%; color: var(--muted); background: transparent; font-size: 13px; padding: 4px 14px; }
   .town-edit { display: grid; gap: 8px; }
+  .line-btn { justify-self: start; font: inherit; font-size: 15px; padding: 8px 14px; border-radius: 999px;
+    border: 1px dashed var(--line); background: var(--field); color: var(--fg); cursor: pointer; }
   .add-row { display: flex; gap: 8px; margin: 0; }
   .add-row input { flex: 1; min-width: 0; font-size: 16px; padding: 10px 12px; }
   .add-row button { font: inherit; font-size: 16px; padding: 10px 16px; border-radius: 8px; border: none;
@@ -106,7 +112,8 @@
         <input id="newTown" type="text" placeholder="追加する町名（例：上大川前通）" autocomplete="off">
         <button type="submit">追加</button>
       </form>
-      <p class="hint">町名の × で削除できます。並べかえは編集を終えてから長押しで。<button type="button" class="clear" id="resetTowns">最初の町名にもどす</button></p>
+      <button type="button" class="line-btn" id="addBreak">↵ 改行を入れる</button>
+      <p class="hint">× で削除。長押しで動かせます。「改行」を置いた所から次の行になります。<button type="button" class="clear" id="resetTowns">最初の町名にもどす</button></p>
     </div>
   </div>
   <div class="field">
@@ -265,23 +272,43 @@
 
   var townList = loadTowns();
 
+  // 町名の並びに入れる「改行」の印
+  var BREAK = '\n';
+
   function renderTowns() {
     towns.textContent = '';
     towns.classList.toggle('editing', editing);
     townList.forEach(function (name, i) {
+      if (name === BREAK && !editing) {
+        var br = document.createElement('span');
+        br.className = 'row-break';
+        br.dataset.name = BREAK;
+        towns.appendChild(br);
+        return;
+      }
       var b = document.createElement('button');
       b.type = 'button';
-      b.textContent = name;
+      b.dataset.name = name;
       if (editing) {
-        b.setAttribute('aria-label', name + ' を削除');
+        // 編集中は改行も ×（削除）つきのボタンで見せて、残りと一緒に長押しで動かせる
+        if (name === BREAK) {
+          b.className = 'break-chip';
+          b.textContent = '↵ 改行';
+          b.setAttribute('aria-label', '改行を削除');
+        } else {
+          b.textContent = name;
+          b.setAttribute('aria-label', name + ' を削除');
+        }
+        towns.appendChild(b);
         b.addEventListener('click', function () {
+          if (justDragged) return;
           townList.splice(i, 1);
           saveTowns();
           renderTowns();
         });
-        towns.appendChild(b);
         return;
       }
+      b.textContent = name;
       b.setAttribute('aria-pressed', input.value === PREFIX + name ? 'true' : 'false');
       keepFocus(b);
       b.addEventListener('click', function () {
@@ -310,7 +337,7 @@
     if (drag.active) {
       drag.el.classList.remove('dragging');
       towns.classList.remove('sorting');
-      townList = Array.prototype.map.call(towns.children, function (b) { return b.textContent; });
+      townList = Array.prototype.map.call(towns.children, function (el) { return el.dataset.name; });
       saveTowns();
       justDragged = true;
       setTimeout(function () { justDragged = false; }, 0);
@@ -320,7 +347,7 @@
 
   towns.addEventListener('pointerdown', function (e) {
     var b = e.target.closest('button');
-    if (!b || editing || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (!b || (e.pointerType === 'mouse' && e.button !== 0)) return;
     drag = { el: b, x: e.clientX, y: e.clientY, active: false };
     drag.timer = setTimeout(function () {
       if (!drag) return;
@@ -368,6 +395,12 @@
     }
     newTown.value = '';
     newTown.focus();
+  });
+
+  document.getElementById('addBreak').addEventListener('click', function () {
+    townList.push(BREAK);
+    saveTowns();
+    renderTowns();
   });
 
   document.getElementById('resetTowns').addEventListener('click', function () {
