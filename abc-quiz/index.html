@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fff6e6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>ABC きいて タッチ！</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Andika:wght@700&family=Zen+Maru+Gothic:wght@500;700;900&display=swap">
+<style>
+  /* Kid-facing letter quiz. Screens: home (stage map) → learn (meet letters) → quiz (hear & tap) → result. */
+  :root {
+    --bg: #fff6e6; --fg: #3a2e25; --muted: #8a7a6c; --card: #ffffff; --line: #ecdcc6;
+    --ok: #2fa84f; --ng: #e0574f;
+    --ui: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Hiragino Sans", sans-serif;
+    --abc: "Andika", "Zen Maru Gothic", sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; }
+  /* Cut off anything that pokes out sideways (the swiped card, slide-ins) so phones never widen or zoom out the page.
+     clip (unlike hidden) doesn't turn body into its own scroller, so window scrolling keeps working. */
+  html { overflow-x: hidden; }
+  html, body, .screen { overflow-x: clip; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--ui); font-weight: 700;
+    user-select: none; -webkit-user-select: none; overscroll-behavior: none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  button { font: inherit; color: inherit; border: 0; cursor: pointer; touch-action: manipulation; }
+  [hidden] { display: none !important; }
+  .screen { max-width: 520px; margin: 0 auto; min-height: 100dvh; padding: 16px 16px 24px;
+    display: flex; flex-direction: column; gap: 16px; }
+
+  /* Chunky "press-down" button look shared by cards and actions */
+  .push { background: var(--card); border-radius: 22px; box-shadow: 0 6px 0 var(--line);
+    transition: transform .08s, box-shadow .08s; }
+  .push:active:not(:disabled) { transform: translateY(5px); box-shadow: 0 1px 0 var(--line); }
+  .big-btn { padding: 16px 20px; font-size: 1.25rem; font-weight: 900; border-radius: 999px;
+    background: var(--c, #ff8a3d); color: #fff; box-shadow: 0 6px 0 var(--cd, #d96a22); }
+  .big-btn:active { box-shadow: 0 1px 0 var(--cd, #d96a22); }
+  .ghost { background: transparent; box-shadow: none; color: var(--muted); font-size: 1rem; padding: 10px; }
+
+  /* Home */
+  .title { text-align: center; margin: 8px 0 0; }
+  .title h1 { font-size: min(2rem, 8.2vw); white-space: nowrap; font-weight: 900; margin: 0; letter-spacing: .02em; }
+  .title h1 .abc { font-family: var(--abc); color: #ff6b4a; }
+  .title p { margin: 4px 0 0; color: var(--muted); font-size: 1rem; }
+  .mascot { font-size: 3.4rem; line-height: 1; text-align: center; }
+  .stages { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }   /* long labels must not widen the page */
+  .stage { display: flex; align-items: center; gap: 14px; padding: 14px 16px; text-align: left;
+    border: 3px solid var(--c); box-shadow: 0 6px 0 var(--c); }
+  .stage:active:not(:disabled) { box-shadow: 0 1px 0 var(--c); }
+  .stage .badge { flex: none; width: 56px; height: 56px; border-radius: 50%; background: var(--c); color: #fff;
+    display: grid; place-items: center; font-size: 1.5rem; font-weight: 900; }
+  .stage .body { flex: 1; min-width: 0; container-type: inline-size; }   /* lets the label shrink to the button */
+  .stage .letters { font-family: var(--abc); font-size: 1.7rem; letter-spacing: .12em; line-height: 1.1; }
+  .stage .letters.kana { font-family: var(--ui); font-weight: 900; font-size: 1.5rem; letter-spacing: .04em; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .stage .sub { font-size: .9rem; color: var(--muted); }
+  .stars { color: #ffbf1f; font-size: 1.3rem; letter-spacing: .05em; white-space: nowrap; }
+  .stars .off { color: #e8dccb; }
+  .stage:disabled { border-color: #e2d6c4; box-shadow: 0 6px 0 #e2d6c4; background: #f7efe2; }
+  .stage:disabled .badge { background: #d8cab6; }
+  .stage:disabled .letters, .stage:disabled .sub { color: #b9a994; }
+  .section-head { display: flex; align-items: baseline; gap: 10px; margin: 10px 4px -4px; font-size: 1.2rem; font-weight: 900; }
+  .section-head .abc { font-family: var(--abc); font-size: 1.5rem; color: var(--muted); letter-spacing: .08em; }
+  .parent { margin: 4px auto 0; font-size: .8rem; font-weight: 500; }
+  .note { margin-top: auto; text-align: center; font-size: .82rem; color: var(--muted); font-weight: 500; line-height: 1.6; }
+
+  /* Top bar used by learn & quiz */
+  .bar { display: flex; align-items: center; gap: 12px; }
+  .close { width: 48px; height: 48px; border-radius: 50%; font-size: 1.4rem; flex: none; }
+  .dots { flex: 1; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: #eadbc6; }
+  .dot.now { background: var(--c); transform: scale(1.25); }
+  .dot.ok { background: var(--ok); }
+  .dot.miss { background: #f2b33d; }
+  .bar .spacer { width: 48px; flex: none; }
+
+  /* Learn */
+  .learn-card { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    border: 4px solid var(--c); box-shadow: 0 8px 0 var(--c); padding: 24px;
+    touch-action: pan-y; will-change: transform; }   /* horizontal drags are ours (swipe), vertical stays scroll */
+  .learn-card .glyph { font-family: var(--abc); font-size: min(52vw, 15rem); line-height: 1; color: var(--c); }
+  .learn-card .kana { font-size: 2.4rem; font-weight: 900; }
+  .learn-card .pair { font-size: 1.1rem; color: var(--muted); }
+  .learn-card .glyph.long { font-size: min(32vw, 9.5rem); }
+  .learn-card .glyph.word { font-size: min(17vw, 5.4rem); }
+  .learn-card .glyph .dbl { color: var(--fg); text-decoration: underline; text-decoration-thickness: .08em; text-underline-offset: .12em; }
+  .learn-card .kana.hira { font-size: 3.4rem; white-space: nowrap; }
+  .learn-card .pair.romaji { font-family: var(--abc); font-size: 1.6rem; color: var(--fg); }
+  .learn-card .pair.romaji small { font-family: var(--ui); font-size: 1rem; color: var(--muted); display: block; text-align: center; }
+  .learn-card .pair b { font-family: var(--abc); font-size: 1.8rem; color: var(--fg); margin-left: 6px; }
+  .learn-card .tap { color: var(--muted); font-size: .95rem; text-align: center; line-height: 1.7; }
+  .learn-nav { display: flex; gap: 12px; }
+  .learn-nav button { flex: 1; }
+  .arrow { padding: 16px; font-size: 1.6rem; border-radius: 999px; }
+  .arrow:disabled { opacity: .35; }
+
+  /* Quiz */
+  .ask { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 4px; }
+  .speaker { width: 132px; height: 132px; border-radius: 50%; font-size: 3.6rem; background: var(--c); color: #fff;
+    box-shadow: 0 8px 0 var(--cd); display: grid; place-items: center; }
+  .speaker:active { transform: translateY(6px); box-shadow: 0 2px 0 var(--cd); }
+  .speaker.upper { flex-direction: column; gap: 0; font-size: 1.4rem; line-height: 1; }
+  .speaker.upper .big { font-family: var(--abc); font-size: 4.6rem; }
+  .speaker.upper .big.hira { font-family: var(--ui); font-size: 4rem; font-weight: 900; }
+  .speaker.upper .big.hira.two { font-size: 2.9rem; letter-spacing: -.04em; }
+  .speaker.upper .big.hira.three { font-size: 2.2rem; letter-spacing: -.04em; }
+  .speaker.upper .big.hira.four { font-size: 1.75rem; letter-spacing: -.04em; }
+  .speaker.silent, .speaker.silent:active { cursor: default; transform: none; box-shadow: 0 8px 0 var(--cd); }
+  .speaker.talking { animation: pulse .6s ease-in-out; }
+  .prompt { font-size: 1.15rem; min-height: 1.6em; text-align: center; }
+  .hint { font-size: 1.6rem; font-weight: 900; color: var(--c); min-height: 1.4em; }
+  .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; flex: 1; align-content: center; }
+  .choice { aspect-ratio: 1 / .9; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 4px solid transparent; position: relative; }
+  .choice .glyph { font-family: var(--abc); font-size: min(26vw, 7rem); line-height: 1; }
+  .choice.long .glyph { font-size: min(17vw, 4.6rem); }
+  .choice.xlong .glyph { font-size: min(12vw, 3.3rem); }
+  .choice.xxlong .glyph { font-size: min(8.5vw, 2.3rem); }
+  .choice .kana { font-size: 1.1rem; height: 1.4em; color: var(--ok); }
+  .choice.correct { border-color: var(--ok); box-shadow: 0 6px 0 var(--ok); background: #eafbe9; animation: pop .35s; }
+  .choice.correct .glyph { color: var(--ok); }
+  .choice.wrong { animation: shake .4s; opacity: .35; }
+  .choice:disabled { cursor: default; }
+
+  /* Result */
+  .result { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; }
+  .result .big-stars { font-size: 4rem; letter-spacing: .1em; color: #ffbf1f; }
+  .result .big-stars .off { color: #e8dccb; }
+  .result .big-stars span { display: inline-block; animation: pop .5s backwards; }
+  .result h2 { font-size: 2rem; font-weight: 900; margin: 0; }
+  .result p { margin: 0; color: var(--muted); font-size: 1.1rem; }
+  .result .weak { font-family: var(--abc); font-size: 2.2rem; letter-spacing: .15em; color: var(--fg); }
+  .result-actions { display: grid; gap: 12px; width: 100%; }
+
+  /* Confetti */
+  .confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 10; }
+  .confetti i { position: absolute; top: -20px; width: 10px; height: 16px; border-radius: 3px; animation: fall linear forwards; }
+
+  @keyframes pop { 0% { transform: scale(.6); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-8px); } 40%,80% { transform: translateX(8px); } }
+  @keyframes pulse { 50% { transform: scale(1.08); } }
+  @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<!-- HOME -->
+<section class="screen" id="home">
+  <div class="title">
+    <div class="mascot" aria-hidden="true">🦊</div>
+    <h1><span class="abc">ABC</span> きいて タッチ！</h1>
+    <p>おとを きいて もじを えらぼう</p>
+  </div>
+  <div class="stages" id="stages"></div>
+  <p class="note">おとが でないときは、スマホの おとを おおきくしてね</p>
+  <button class="ghost parent" id="openAll"></button>
+</section>
+
+<!-- LEARN -->
+<section class="screen" id="learn" hidden>
+  <div class="bar">
+    <button class="close push" data-home aria-label="もどる">✕</button>
+    <div class="dots" id="learnDots"></div>
+    <div class="spacer"></div>
+  </div>
+  <button class="learn-card push" id="learnCard" aria-label="もういちど きく">
+    <div class="glyph" id="learnGlyph">A</div>
+    <div class="kana" id="learnKana">エー</div>
+    <div class="pair" id="learnPair" hidden>おおもじは<b></b></div>
+    <div class="tap"><span id="tapSound">🔊 タッチで きこえるよ<br></span>👆 よこに スワイプで つぎの もじ</div>
+  </button>
+  <div class="learn-nav">
+    <button class="arrow push" id="prevBtn" aria-label="まえ">◀</button>
+    <button class="arrow push" id="nextBtn" aria-label="つぎ">▶</button>
+  </div>
+  <button class="big-btn" id="toQuiz">クイズに チャレンジ！</button>
+</section>
+
+<!-- QUIZ -->
+<section class="screen" id="quiz" hidden>
+  <div class="bar">
+    <button class="close push" data-home aria-label="やめる">✕</button>
+    <div class="dots" id="quizDots"></div>
+    <div class="spacer"></div>
+  </div>
+  <div class="ask">
+    <button class="speaker" id="speaker" aria-label="もういちど きく">🔊</button>
+    <div class="prompt" id="prompt">どれかな？</div>
+    <div class="hint" id="hint"></div>
+  </div>
+  <div class="choices" id="choices"></div>
+</section>
+
+<!-- RESULT -->
+<section class="screen" id="result" hidden>
+  <div class="result">
+    <div class="big-stars" id="resultStars"></div>
+    <h2 id="resultTitle">クリア！</h2>
+    <p id="resultScore"></p>
+    <div id="weakWrap" hidden>
+      <p>もういちど みてみよう</p>
+      <div class="weak" id="weakLetters"></div>
+    </div>
+  </div>
+  <div class="result-actions">
+    <button class="big-btn" id="nextStage">つぎの ステージへ ▶</button>
+    <button class="big-btn" id="retry" style="--c:#4aa8ff;--cd:#2f86d6">もういちど</button>
+    <button class="ghost" data-home>ステージを えらぶ</button>
+  </div>
+</section>
+
+<div class="confetti" id="confetti" aria-hidden="true"></div>
+
+<script>
+// ---------- data ----------
+const KANA = { A:'エー', B:'ビー', C:'シー', D:'ディー', E:'イー', F:'エフ', G:'ジー', H:'エイチ', I:'アイ',
+  J:'ジェイ', K:'ケイ', L:'エル', M:'エム', N:'エヌ', O:'オー', P:'ピー', Q:'キュー', R:'アール', S:'エス',
+  T:'ティー', U:'ユー', V:'ヴィー', W:'ダブリュー', X:'エックス', Y:'ワイ', Z:'ズィー' };
+
+// Letters whose names sound alike (or look alike) — mixed into the choices so kids learn to tell them apart.
+const CONFUSE = { A:'HJK', B:'DEPVG', C:'ZSE', D:'BTP', E:'BDGI', F:'SX', G:'JZDB', H:'A', I:'YE', J:'GKA',
+  K:'JA', L:'RE', M:'N', N:'M', O:'QU', P:'BTD', Q:'UOW', R:'LA', S:'FX', T:'DPB', U:'QW', V:'BZ',
+  W:'UY', X:'SF', Y:'IW', Z:'GVC' };
+
+// Lowercase: letters that look alike (b d p q, n m u h, i j l ...) come first, then the sound-alikes above.
+const LOOK = { a:'oe', b:'dpqh', c:'oe', d:'bqp', e:'ca', f:'tl', g:'qy', h:'nb', i:'jl', j:'ig', k:'hx', l:'it',
+  m:'nw', n:'mhu', o:'ca', p:'qbd', q:'pgd', r:'n', s:'z', t:'fl', u:'nv', v:'wuy', w:'vm', x:'k', y:'vg', z:'s' };
+const confuse = l => l === l.toUpperCase() ? CONFUSE[l] : LOOK[l] + CONFUSE[l.toUpperCase()].toLowerCase();
+
+// id = key for saved stars (the first six keep their old numeric ids so earlier progress carries over).
+// needs = stages that must have at least one star before this one opens.
+const C = [['#ff6b4a','#d64a2c'], ['#ff9f1c','#d47d05'], ['#2fb36b','#1e8a4f'], ['#3d9bff','#1f76d1'], ['#9b6bff','#7546d6'], ['#ff5c9a','#d63a76']];
+const UP = ['ABCDE', 'FGHIJ', 'KLMNO', 'PQRST', 'UVWXYZ'];
+// Romaji (Hepburn, as on signs and keyboards). Each row is a stage; the sound is the Japanese kana.
+const ROWS = [
+  ['あいうえお', 'a i u e o'], ['かきくけこ', 'ka ki ku ke ko'], ['さしすせそ', 'sa shi su se so'],
+  ['たちつてと', 'ta chi tsu te to'], ['なにぬねの', 'na ni nu ne no'], ['はひふへほ', 'ha hi fu he ho'],
+  ['まみむめも', 'ma mi mu me mo'], ['らりるれろ', 'ra ri ru re ro'], ['やゆよわをん', 'ya yu yo wa wo n'],
+].map(([kana, ro]) => ({ kana, items: ro.split(' ') }));
+// Dakuon / handakuon rows; base = the plain row they come from (が ← か), used for ka/ga choices.
+// ぢ・づ are spelled ji・zu like じ・ず; their item ids differ (dji, dzu) so they stay separate.
+const DROWS = [
+  ['がぎぐげご', 'ga gi gu ge go', 1], ['ざじずぜぞ', 'za ji zu ze zo', 2], ['だぢづでど', 'da dji dzu de do', 3],
+  ['ばびぶべぼ', 'ba bi bu be bo', 5], ['ぱぴぷぺぽ', 'pa pi pu pe po', 5],
+].map(([kana, ro, base]) => ({ kana, items: ro.split(' '), base }));
+// Youon (きゃ…): base kana + small ゃゅょ. sh/ch/j drop the y (sha, cha, ja).
+const YROWS = [['き', 'ki', 'ky'], ['し', 'shi', 'sh'], ['ち', 'chi', 'ch'], ['に', 'ni', 'ny'], ['ひ', 'hi', 'hy'],
+  ['み', 'mi', 'my'], ['り', 'ri', 'ry'], ['ぎ', 'gi', 'gy'], ['じ', 'ji', 'j'], ['び', 'bi', 'by'], ['ぴ', 'pi', 'py']];
+const SMALL = [['ゃ', 'a'], ['ゅ', 'u'], ['ょ', 'o']];
+const YINFO = {};   // kya → { kana: 'き', ro: 'ki', small: 'ゃ', big: 'kiya' }
+YROWS.forEach(([kana, ro, pre]) => SMALL.forEach(([small, v]) => YINFO[pre + v] = { kana, ro, small, v, big: ro + 'y' + v }));
+const YSTAGES = [['きゃ・しゃ', 'ky sh'], ['ちゃ・にゃ', 'ch ny'], ['ひゃ・みゃ・りゃ', 'hy my ry'], ['ぎゃ・じゃ', 'gy j'], ['びゃ・ぴゃ', 'by py']]
+  .map(([kana, pres]) => ({ kana, items: pres.split(' ').flatMap(pre => SMALL.map(([, v]) => pre + v)) }));
+// Sokuon (っ) words: っ doubles the next consonant (kitte, zasshi, mittsu).
+const SOKU_WORDS = [
+  ['kitte', 'きって'], ['rappa', 'らっぱ'], ['kappa', 'かっぱ'], ['happa', 'はっぱ'], ['batta', 'ばった'], ['matte', 'まって'],
+  ['rakko', 'らっこ'], ['kippu', 'きっぷ'],
+  ['shippo', 'しっぽ'], ['nekko', 'ねっこ'], ['nikki', 'にっき'], ['gakki', 'がっき'], ['koppu', 'こっぷ'], ['hoppe', 'ほっぺ'],
+  ['totte', 'とって'], ['ippai', 'いっぱい'],
+  ['zasshi', 'ざっし'], ['issho', 'いっしょ'], ['mittsu', 'みっつ'], ['yottsu', 'よっつ'], ['chotto', 'ちょっと'],
+  ['bikkuri', 'びっくり'], ['yukkuri', 'ゆっくり'], ['pittari', 'ぴったり'],
+];
+const SOKU = {};   // kitte → { at: 2, letter: 't', single: 'kite', tsu: 'kitsute' }
+for (const [w] of SOKU_WORDS) {
+  const at = [...w].findIndex((c, i) => c === w[i + 1] && !'aiueo'.includes(c));
+  SOKU[w] = { at, letter: w[at], single: w.slice(0, at) + w.slice(at + 1), tsu: w.slice(0, at) + 'tsu' + w.slice(at + 1) };
+}
+const SSTAGES = [['きって・らっぱ', 0, 8], ['しっぽ・ねっこ', 8, 16], ['ざっし・みっつ', 16, 24]]
+  .map(([kana, a, b]) => ({ kana, items: SOKU_WORDS.slice(a, b).map(([w]) => w) }));
+const DISP = { dji: 'ji', dzu: 'zu' };
+const disp = item => DISP[item] || item;
+const HIRA = {}, BASE = {};
+ROWS.forEach(r => r.items.forEach((ro, i) => HIRA[ro] = r.kana[i]));
+DROWS.forEach(r => r.items.forEach((ro, i) => { HIRA[ro] = r.kana[i]; BASE[ro] = ROWS[r.base].items[i]; }));
+for (const [ro, y] of Object.entries(YINFO)) HIRA[ro] = y.kana + y.small;
+for (const [w, kana] of SOKU_WORDS) HIRA[w] = kana;
+// Spellings that don't follow "consonant + vowel" — shown on the learn card.
+const SPECIAL = { shi: 'si とも かくよ', chi: 'ti とも かくよ', tsu: 'tu とも かくよ', fu: 'hu とも かくよ',
+  wo: 'おとは「お」と おなじ', n: 'n だけで「ん」', ji: 'zi とも かくよ',
+  dji: '「じ」と おなじ ji<br>キーボードでは di', dzu: '「ず」と おなじ zu<br>キーボードでは du' };
+const YNOTE = { sh: 'sya とも かくよ', ch: 'tya とも かくよ', j: 'zya・jya とも かくよ' };
+const VOWEL = ro => disp(ro).at(-1) === 'n' ? '' : disp(ro).at(-1);
+const CONS = ro => disp(ro).slice(0, -1);
+const RC = ['#ff6b4a', '#ff9f1c', '#2fb36b', '#3d9bff', '#9b6bff', '#ff5c9a', '#14a3a3', '#e0a800', '#7a8cff'];
+const RCD = ['#d64a2c', '#d47d05', '#1e8a4f', '#1f76d1', '#7546d6', '#d63a76', '#0b7c7c', '#b88a00', '#5566d6'];
+
+// letters = the items of a stage (single letters, or romaji syllables like "ka").
+const STAGES = [
+  ...UP.map((L, i) => ({ id: String(i), sec: 'upper', letters: [...L], c: C[i][0], cd: C[i][1], needs: i ? [String(i - 1)] : [] })),
+  { id: '5', sec: 'upper', letters: [...UP.join('')], c: C[5][0], cd: C[5][1], all: true, needs: ['4'] },
+  // a lowercase stage opens once its uppercase partner and the previous lowercase stage are cleared
+  ...UP.map((L, i) => ({ id: 'l' + i, sec: 'lower', letters: [...L.toLowerCase()], c: C[i][0], cd: C[i][1],
+                         needs: i ? [String(i), 'l' + (i - 1)] : ['0'] })),
+  { id: 'lmix', sec: 'lower', letters: [...UP.join('').toLowerCase()], c: C[5][0], cd: C[5][1], all: true, needs: ['l4'] },
+  { id: 'pair', sec: 'lower', letters: [...UP.join('').toLowerCase()], c: '#14a3a3', cd: '#0b7c7c', all: true, pair: true, needs: ['l4'] },
+  // romaji opens after all the lowercase rows, then goes row by row
+  ...ROWS.map((r, i) => ({ id: 'r' + i, sec: 'romaji', letters: r.items, kana: r.kana, c: RC[i], cd: RCD[i],
+                           needs: [i ? 'r' + (i - 1) : 'l4'] })),
+  { id: 'rmix', sec: 'romaji', letters: ROWS.flatMap(r => r.items), kana: 'あ〜ん', c: C[5][0], cd: C[5][1], all: true, needs: ['r' + (ROWS.length - 1)] },
+  // dakuon opens after every plain row
+  ...DROWS.map((r, i) => ({ id: 'd' + i, sec: 'daku', letters: r.items, kana: r.kana, base: r.base, c: RC[i], cd: RCD[i],
+                            needs: [i ? 'd' + (i - 1) : 'r' + (ROWS.length - 1)] })),
+  { id: 'dmix', sec: 'daku', letters: DROWS.flatMap(r => r.items), kana: 'が〜ぽ', c: C[5][0], cd: C[5][1], all: true, needs: ['d' + (DROWS.length - 1)] },
+  // youon opens after the dakuon rows
+  ...YSTAGES.map((r, i) => ({ id: 'y' + i, sec: 'yoon', letters: r.items, kana: r.kana, c: RC[i], cd: RCD[i],
+                              needs: [i ? 'y' + (i - 1) : 'd' + (DROWS.length - 1)] })),
+  { id: 'ymix', sec: 'yoon', letters: YSTAGES.flatMap(r => r.items), kana: 'きゃ〜ぴょ', c: C[5][0], cd: C[5][1], all: true, needs: ['y' + (YSTAGES.length - 1)] },
+  // sokuon opens after the youon rows
+  ...SSTAGES.map((r, i) => ({ id: 's' + i, sec: 'soku', letters: r.items, kana: r.kana, c: RC[i], cd: RCD[i],
+                              needs: [i ? 's' + (i - 1) : 'y' + (YSTAGES.length - 1)] })),
+  { id: 'smix', sec: 'soku', letters: SSTAGES.flatMap(r => r.items), kana: 'ぜんぶ', c: C[5][0], cd: C[5][1], all: true, needs: ['s' + (SSTAGES.length - 1)] },
+];
+const SECTIONS = { upper: ['おおもじ', 'ABC'], lower: ['こもじ', 'abc'], romaji: ['ローマじ', 'ka ki ku'],
+  daku: ['てんてん・まる', 'ga za pa'], yoon: ['ちいさい ゃゅょ', 'kya sha'],
+  soku: ['ちいさい っ', 'kitte'] };
+const kanaSec = sec => ['romaji', 'daku', 'yoon', 'soku'].includes(sec);
+const isRomaji = () => kanaSec(STAGES[stageIdx].sec);
+// weak-letter memory: romaji "a" must not share a slot with lowercase "a"
+const wkey = item => (isRomaji() ? 'r:' : '') + item;
+
+// ---------- saved progress ----------
+const KEY = 'abc-quiz-v1';
+const save = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } })();
+save.stars ||= {}; save.weak ||= {};
+const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch {} };
+const unlocked = st => save.openAll || st.needs.every(id => (save.stars[id] || 0) > 0);
+
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const starHtml = n => [0,1,2].map(i => i < n ? '<span>★</span>' : '<span class="off">★</span>').join('');
+
+// ---------- sound ----------
+// Recorded mp3s (sounds/) played through <audio>. This works in in-app browsers that lack speechSynthesis,
+// and on iPhone it is not silenced by the mute switch the way Web Audio is.
+// One element per channel: once a tap has started it, iOS lets it play again from timers.
+const voiceEl = new Audio(), sfxEl = new Audio();
+for (const n of [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'ok', 'ng', 'clear']) { const a = new Audio(`sounds/${n}.mp3?v=3`); a.preload = 'auto'; }
+
+function play(el, name, onFail) {
+  el.pause(); el.muted = false;
+  el.src = `sounds/${name}.mp3?v=3`;
+  const p = el.play();
+  if (p && p.catch) p.catch(() => onFail && onFail());
+}
+function speakFallback(letter) {           // last resort if the mp3 can't play
+  if (!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(letter === 'A' ? 'ay' : letter);
+  u.lang = 'en-US'; u.rate = 0.75;
+  speechSynthesis.speak(u);
+}
+// Answers fire on touch-down, which iOS doesn't count as a gesture for starting audio.
+// So start the effects channel (muted) during the tap that opens the quiz; later plays are then allowed.
+function primeSfx() {
+  if (sfxEl.dataset.primed) return;
+  sfxEl.muted = true; sfxEl.src = 'sounds/ok.mp3?v=3';
+  const p = sfxEl.play();
+  const done = () => { sfxEl.pause(); sfxEl.muted = false; sfxEl.dataset.primed = '1'; };
+  p && p.then ? p.then(done, () => { sfxEl.muted = false; }) : done();
+}
+// React the moment a finger touches (not on release). Keyboard Enter/Space still works via click.
+function onTap(el, fn) {
+  el.addEventListener('pointerdown', e => { if (e.button === 0 && !el.disabled) fn(e); });
+  el.addEventListener('click', e => { if (e.detail === 0) fn(e); });
+}
+const say = item => {
+  if (isRomaji()) return;   // romaji stages are silent: read the kana, pick the spelling
+  const L = item.toUpperCase(); play(voiceEl, L, () => speakFallback(L));
+};
+const chimeOk = () => play(sfxEl, 'ok');
+const chimeNg = () => play(sfxEl, 'ng');
+const fanfare = () => play(sfxEl, 'clear');
+
+// ---------- screens ----------
+function show(id) {
+  for (const s of document.querySelectorAll('.screen')) s.hidden = s.id !== id;
+  if (id !== 'result') $('confetti').innerHTML = '';
+  window.scrollTo(0, 0);
+}
+let stageIdx = 0;
+function setColors(st) { document.body.style.setProperty('--c', st.c); document.body.style.setProperty('--cd', st.cd); }
+
+function stageLabel(st) {
+  if (st.pair) return { big: 'B → b', sub: 'おおもじと こもじの ペア' };
+  if (st.sec === 'soku') return { big: st.kana, sub: st.all ? 'ぜんぶ ミックス' : st.letters.slice(0, 3).join(' ') + ' …' };
+  if (st.sec === 'yoon') return { big: st.kana, sub: st.all ? 'ぜんぶ ミックス' : st.letters.filter(l => l.endsWith('a')).join(' ') + ' …' };
+  if (kanaSec(st.sec)) return { big: st.kana, sub: st.all ? 'ぜんぶ ミックス' : st.letters.map(disp).join(' ') };
+  if (st.all) return { big: st.sec === 'upper' ? 'A〜Z' : 'a〜z', sub: 'ぜんぶ ミックス' };
+  return { big: st.letters.join(''), sub: `${st.letters[0]} 〜 ${st.letters.at(-1)}` };
+}
+function lockedHint(st) {
+  if (st.id === 'r0') return 'こもじを ぜんぶ クリアしてね';
+  if (st.id === 'd0') return 'ローマじ（あ〜ん）を ぜんぶ クリアしてね';
+  if (st.id === 'y0') return 'てんてん・まるを ぜんぶ クリアしてね';
+  if (st.id === 's0') return 'ちいさい ゃゅょを ぜんぶ クリアしてね';
+  if (st.sec === 'lower' && st.needs.some(id => !id.startsWith('l') && !(save.stars[id] > 0)))
+    return `${STAGES.find(s => s.id === st.needs.find(id => !id.startsWith('l')))?.letters.join('')} の あとで`;
+  return 'まえを クリアしてね';
+}
+function renderHome() {
+  const box = $('stages'); box.innerHTML = '';
+  let sec = null, n = 0;
+  STAGES.forEach((st, i) => {
+    if (st.sec !== sec) {
+      sec = st.sec; n = 0;
+      const h = document.createElement('div'); h.className = 'section-head';
+      h.innerHTML = `${SECTIONS[sec][0]} <span class="abc">${SECTIONS[sec][1]}</span>`;
+      box.appendChild(h);
+    }
+    n++;
+    const b = document.createElement('button');
+    b.className = 'stage push'; b.style.setProperty('--c', st.c);
+    b.disabled = !unlocked(st);
+    const lb = stageLabel(st);
+    b.innerHTML = `<div class="badge">${b.disabled ? '🔒' : (st.pair ? '⇄' : st.all ? '★' : n)}</div>
+      <div class="body"><div class="letters${kanaSec(st.sec) ? ' kana' : ''}" style="font-size:min(${kanaSec(st.sec) ? 1.5 : 1.7}rem, ${(100 / (lb.big.length * (kanaSec(st.sec) ? 1.08 : 0.92))).toFixed(1)}cqw)">${lb.big}</div>
+      <div class="sub">${b.disabled ? lockedHint(st) : lb.sub}</div></div>
+      <div class="stars">${starHtml(save.stars[st.id] || 0)}</div>`;
+    b.onclick = () => { stageIdx = i; st.all ? startQuiz() : startLearn(); };
+    box.appendChild(b);
+  });
+  $('openAll').textContent = save.openAll ? 'おうちの かたへ：ロックを もとに もどす' : 'おうちの かたへ：ぜんぶの ステージを ひらく';
+  show('home');
+}
+$('openAll').onclick = () => { save.openAll = !save.openAll; persist(); renderHome(); };
+document.querySelectorAll('[data-home]').forEach(b => b.onclick = () => { voiceEl.pause(); quizToken++; renderHome(); });
+
+// ---------- learn ----------
+let learnPos = 0;
+function startLearn() {
+  const st = STAGES[stageIdx]; setColors(st); learnPos = 0; show('learn'); drawLearn();
+}
+function drawLearn(dir = 0) {
+  const L = STAGES[stageIdx].letters;
+  const sk = SOKU[L[learnPos]];
+  if (sk) {   // underline the doubled letters: ki[tt]e
+    const w = L[learnPos];
+    $('learnGlyph').innerHTML = `${w.slice(0, sk.at)}<span class="dbl">${w.slice(sk.at, sk.at + 2)}</span>${w.slice(sk.at + 2)}`;
+  } else $('learnGlyph').textContent = disp(L[learnPos]);
+  const ch = L[learnPos], upper = ch.toUpperCase(), ro = isRomaji();
+  const isWord = !!SOKU[ch];
+  $('learnGlyph').classList.toggle('long', disp(ch).length > 1 && !isWord);
+  $('learnGlyph').classList.toggle('word', isWord);
+  $('learnGlyph').style.fontSize = isWord && ch.length > 6 ? 'min(13vw, 4.2rem)' : '';
+  $('learnKana').style.fontSize = ro && HIRA[ch].length > 3 ? `min(3.4rem, ${66 / HIRA[ch].length}vw)` : '';
+  $('learnKana').classList.toggle('hira', ro);
+  $('tapSound').hidden = ro;
+  $('learnPair').classList.toggle('romaji', ro);
+  if (ro) {
+    // "か" big, then how it's built: k + a (or a note for the irregular ones)
+    $('learnKana').textContent = HIRA[ch];
+    $('learnPair').hidden = false;
+    const y = YINFO[ch], sk2 = SOKU[ch];
+    if (sk2) {
+      $('learnPair').innerHTML = `<small>「っ」は つぎの もじ「${sk2.letter}」を ２かい</small>`
+        + `<small>（「っ」が ないと ${sk2.single}）</small>`;
+    } else if (y) {   // き ki ＋ ゃ ya → kya
+      $('learnPair').innerHTML = `${y.kana} ${y.ro} ＋ <span style="font-size:.8em">${y.small}</span> y${y.v}`
+        + (YNOTE[CONS(ch)] ? `<small>${YNOTE[CONS(ch)]}</small>` : '');
+    } else {
+      const how = SPECIAL[ch] || (CONS(ch) ? `${CONS(ch)} ＋ ${VOWEL(ch)}` : 'ローマじの もと（ぼいん）');
+      $('learnPair').innerHTML = SPECIAL[ch] || !CONS(ch) ? `<small>${how}</small>` : how;
+    }
+  } else {
+    $('learnKana').textContent = KANA[upper];
+    $('learnPair').hidden = ch === upper;
+    $('learnPair').innerHTML = `おおもじは<b>${upper}</b>`;
+  }
+  $('learnDots').innerHTML = [...L].map((_, i) => `<span class="dot ${i === learnPos ? 'now' : i < learnPos ? 'ok' : ''}"></span>`).join('');
+  $('prevBtn').disabled = learnPos === 0;
+  $('nextBtn').disabled = learnPos === L.length - 1;
+  const card = $('learnCard');
+  if (dir) {   // slide the new card in from the side it is coming from
+    card.style.animation = 'none';
+    card.animate([{ transform: `translateX(${dir * 70}%)`, opacity: 0 }, { transform: 'none', opacity: 1 }],
+                 { duration: 220, easing: 'cubic-bezier(.2,.8,.3,1)' });
+  } else { card.style.animation = 'none'; card.offsetWidth; card.style.animation = 'pop .35s'; }
+  say(L[learnPos]);
+}
+function goLearn(step) {
+  const n = STAGES[stageIdx].letters.length, to = learnPos + step;
+  if (to < 0 || to >= n) return false;
+  learnPos = to; drawLearn(step); return true;
+}
+$('prevBtn').onclick = () => goLearn(-1);
+$('nextBtn').onclick = () => goLearn(1);
+document.addEventListener('keydown', e => {
+  if ($('learn').hidden) return;
+  if (e.key === 'ArrowRight') goLearn(1);
+  if (e.key === 'ArrowLeft') goLearn(-1);
+});
+
+// Swipe: the card follows the finger; let go past the threshold (or flick) to change letter.
+// Swiping left = next letter, like turning a page. A plain tap still replays the sound.
+(() => {
+  const card = $('learnCard');
+  let x0 = 0, y0 = 0, t0 = 0, dx = 0, id = null, dragging = false, swallowClick = false;
+  card.addEventListener('pointerdown', e => {
+    id = e.pointerId; x0 = e.clientX; y0 = e.clientY; t0 = performance.now(); dx = 0; dragging = false;
+  });
+  card.addEventListener('pointermove', e => {
+    if (e.pointerId !== id) return;
+    const mx = e.clientX - x0, my = e.clientY - y0;
+    if (!dragging && Math.abs(mx) > 10 && Math.abs(mx) > Math.abs(my)) {
+      dragging = true; card.setPointerCapture(id); card.style.animation = 'none';
+    }
+    if (!dragging) return;
+    const n = STAGES[stageIdx].letters.length;
+    const atEdge = (mx > 0 && learnPos === 0) || (mx < 0 && learnPos === n - 1);
+    dx = atEdge ? mx * 0.25 : mx;                       // rubber-band at the first/last letter
+    card.style.transition = 'none';
+    card.style.transform = `translateX(${dx}px) rotate(${dx / 25}deg)`;
+  });
+  const end = e => {
+    if (e.pointerId !== id) return;
+    id = null;
+    if (!dragging) return;
+    swallowClick = true; setTimeout(() => swallowClick = false, 0);
+    const fast = Math.abs(dx) / (performance.now() - t0) > 0.5;   // px per ms
+    const step = (Math.abs(dx) > card.offsetWidth * 0.25 || (fast && Math.abs(dx) > 30)) ? (dx < 0 ? 1 : -1) : 0;
+    const n = STAGES[stageIdx].letters.length, ok = step && learnPos + step >= 0 && learnPos + step < n;
+    if (ok) {
+      card.style.transition = 'transform .16s ease-in, opacity .16s';
+      card.style.transform = `translateX(${-step * 120}%) rotate(${-step * 12}deg)`; card.style.opacity = '0';
+      setTimeout(() => {
+        card.style.transition = 'none'; card.style.transform = ''; card.style.opacity = '';
+        goLearn(step);
+      }, 160);
+    } else {
+      card.style.transition = 'transform .25s cubic-bezier(.3,1.6,.5,1)'; card.style.transform = '';
+    }
+  };
+  card.addEventListener('pointerup', end);
+  card.addEventListener('pointercancel', end);
+  card.addEventListener('click', e => {
+    if (swallowClick) { e.preventDefault(); return; }
+    say(STAGES[stageIdx].letters[learnPos]);
+  });
+})();
+$('toQuiz').onclick = () => startQuiz();
+
+// ---------- quiz ----------
+let questions = [], qi = 0, firstTry = 0, missed = new Set(), wrongThisQ = false, quizToken = 0;
+
+function knownPool() {
+  // Letters from this stage and the earlier ones of the same kind (upper/lower) — only letters the child has met.
+  const st = STAGES[stageIdx];
+  const same = STAGES.filter((s, i) => s.sec === st.sec && (st.all || i <= stageIdx));
+  const extra = st.sec === 'daku' ? same.flatMap(s => s.base != null ? ROWS[s.base].items : DROWS.flatMap(r => ROWS[r.base].items)) : [];
+  return [...new Set([...same.flatMap(s => s.letters), ...extra])];
+}
+function weightedPick(letters) {
+  const w = letters.map(l => 1 + (save.weak[wkey(l)] || 0) * 2);
+  let r = Math.random() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < letters.length; i++) { r -= w[i]; if (r <= 0) return letters[i]; }
+  return letters.at(-1);
+}
+function buildQuestions() {
+  const st = STAGES[stageIdx], letters = [...st.letters];
+  const n = st.all ? 12 : 10;
+  let best = [];
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const qs = st.all ? [] : [...letters];               // every letter of the stage at least once
+    while (qs.length < n) qs.push(weightedPick(letters)); // extra turns favour letters missed before
+    shuffle(qs);
+    best = qs;
+    if (qs.every((q, i) => i === 0 || q !== qs[i - 1])) break; // no same letter twice in a row
+  }
+  return best;
+}
+function choicesFor(ans) {
+  if (SOKU[ans]) {   // kitte: the two classic mistakes (kite, kitsute) + another word
+    const other = shuffle(knownPool().filter(w => w !== ans))[0];
+    return shuffle([ans, SOKU[ans].single, SOKU[ans].tsu, other]);
+  }
+  // never two choices that look the same (じ ji / ぢ ji)
+  const pool = knownPool().filter(c => c === ans || disp(c) !== disp(ans)), set = new Set([ans]);
+  if (BASE[ans] && pool.includes(BASE[ans])) set.add(BASE[ans]);   // が → always offer ka next to ga
+  if (YINFO[ans]) set.add(YINFO[ans].big);                          // きゃ → always offer kiya (= きや) next to kya
+  // up to two look-/sound-alikes, favouring the first ones listed (the strongest look-alikes for lowercase).
+  // romaji: same row (ka/ke) or same vowel (ka/sa)
+  const near = isRomaji()
+    ? shuffle(pool.filter(c => c !== ans && ((CONS(c) && CONS(c) === CONS(ans)) || (VOWEL(c) && VOWEL(c) === VOWEL(ans)))))
+    : [...confuse(ans)].filter(c => pool.includes(c) && c !== ans);
+  shuffle(near.slice(0, 3)).slice(0, 2).forEach(c => set.size < 3 && set.add(c));
+  const rest = shuffle(pool.filter(c => !set.has(c)));
+  while (set.size < 4 && rest.length) {
+    const c = rest.pop();
+    if (![...set].some(x => disp(x) === disp(c))) set.add(c);
+  }
+  return shuffle([...set]);
+}
+
+function startQuiz() {
+  const st = STAGES[stageIdx]; setColors(st);
+  primeSfx();
+  questions = buildQuestions(); qi = 0; firstTry = 0; missed = new Set();
+  show('quiz'); nextQuestion();
+}
+function drawDots(results) {
+  $('quizDots').innerHTML = questions.map((_, i) =>
+    `<span class="dot ${i === qi ? 'now' : results[i] || ''}"></span>`).join('');
+}
+let results = [];
+function nextQuestion() {
+  if (qi === 0) results = [];
+  if (qi >= questions.length) return finish();
+  wrongThisQ = false;
+  const ans = questions[qi];
+  drawDots(results);
+  const pair = STAGES[stageIdx].pair, ro = isRomaji(), sp = $('speaker');
+  // pair stage: show the uppercase letter on the button and ask for its lowercase
+  // romaji: show the kana (no sound), pick its romaji
+  sp.classList.toggle('upper', !!(pair || ro));
+  sp.classList.toggle('silent', ro);
+  sp.setAttribute('aria-label', ro ? HIRA[ans] : 'もういちど きく');
+  sp.innerHTML = pair ? `<span class="big">${ans.toUpperCase()}</span><span>🔊</span>`
+               : ro ? `<span class="big hira${['', '', ' two', ' three', ' four'][Math.min(HIRA[ans].length, 4)]}"${HIRA[ans].length > 4 ? ` style="font-size:${Math.floor(112 / HIRA[ans].length)}px"` : ''}>${HIRA[ans]}</span>` : '🔊';
+  $('prompt').textContent = pair ? `${ans.toUpperCase()} の こもじは どれ？` : ro ? `「${HIRA[ans]}」は ローマじで どれ？` : 'どれかな？';
+  $('hint').textContent = '';
+  const box = $('choices'); box.innerHTML = '';
+  const opts = choicesFor(ans);
+  // one text size for all four, so the longest (the kiya trap) doesn't stand out
+  const longest = Math.max(...opts.map(l => disp(l).length));
+  const size = longest > 6 ? ' xxlong' : longest > 3 ? ' xlong' : longest > 1 ? ' long' : '';
+  for (const l of opts) {
+    const b = document.createElement('button');
+    b.className = 'choice push' + size;
+    b.innerHTML = `<span class="glyph">${disp(l)}</span><span class="kana"></span>`;
+    onTap(b, () => answer(b, l, ans));
+    box.appendChild(b);
+  }
+  speak();
+}
+function speak() {
+  if (isRomaji()) return;
+  const sp = $('speaker'); sp.classList.remove('talking'); sp.offsetWidth; sp.classList.add('talking');
+  say(questions[qi]);
+}
+onTap($('speaker'), speak);
+
+async function answer(btn, picked, ans) {
+  const token = quizToken;
+  if (picked === ans) {
+    for (const b of $('choices').children) b.disabled = true;
+    btn.classList.add('correct');
+    btn.querySelector('.kana').textContent = isRomaji() ? HIRA[ans] : KANA[ans.toUpperCase()];
+    chimeOk();
+    if (!wrongThisQ) { firstTry++; save.weak[wkey(ans)] = Math.max(0, (save.weak[wkey(ans)] || 0) - 1); }
+    results[qi] = wrongThisQ ? 'miss' : 'ok';
+    $('prompt').textContent = wrongThisQ ? 'できたね！' : ['せいかい！', 'すごい！', 'やったね！', 'ばっちり！'][Math.random() * 4 | 0];
+    $('hint').textContent = '';
+    persist();
+    await wait(450); if (token !== quizToken) return;
+    say(ans);
+    await wait(1100); if (token !== quizToken) return;
+    qi++; nextQuestion();
+  } else {
+    btn.disabled = true; btn.classList.add('wrong');
+    chimeNg();
+    if (!wrongThisQ) { save.weak[wkey(ans)] = Math.min(5, (save.weak[wkey(ans)] || 0) + 1); missed.add(ans); persist(); }
+    wrongThisQ = true;
+    $('prompt').textContent = STAGES[stageIdx].pair ? 'おしい！ かたちを よく みてね'
+      : isRomaji() ? 'おしい！ もういちど よく みてね' : 'おしい！ もういちど きいてみよう';
+    // hint after a miss: katakana name for letters; for romaji, the first letter (not the whole answer)
+    $('hint').textContent = !isRomaji() ? KANA[ans.toUpperCase()]
+      : SOKU[ans] ? `「っ」は ${SOKU[ans].letter} を ２かい`
+      : ans === 'n' ? 'n 1もじだよ' : YINFO[ans] ? `${CONS(ans)} で はじまるよ`
+      : CONS(ans) ? `${disp(ans)[0]} で はじまるよ` : 'ぼいん 1もじだよ';
+    await wait(500); if (token !== quizToken) return;
+    speak();
+  }
+}
+
+function finish() {
+  const n = questions.length, ratio = firstTry / n;
+  const stars = ratio >= 0.9 ? 3 : ratio >= 0.7 ? 2 : 1;
+  const id = STAGES[stageIdx].id;
+  save.stars[id] = Math.max(save.stars[id] || 0, stars); persist();
+  $('resultStars').innerHTML = starHtml(stars);
+  [...$('resultStars').children].forEach((s, i) => s.style.animationDelay = `${i * .25}s`);
+  $('resultTitle').textContent = firstTry === n ? 'パーフェクト！' : stars === 3 ? 'すごい！' : stars === 2 ? 'よくできました！' : 'クリア！';
+  $('resultScore').textContent = `${n}もん中 ${firstTry}もん いっかいで せいかい`;
+  $('weakWrap').hidden = missed.size === 0;
+  $('weakLetters').textContent = [...missed].map(m => isRomaji() ? `${HIRA[m]} ${disp(m)}` : m).join('　');
+  // Offer the next stage; if it is still locked (lowercase waits for its uppercase partner), offer what opens it.
+  let next = STAGES[stageIdx + 1];
+  if (next && !unlocked(next)) next = STAGES.find(s => next.needs.includes(s.id) && !(save.stars[s.id] > 0) && unlocked(s));
+  nextIdx = next ? STAGES.indexOf(next) : -1;
+  $('nextStage').hidden = !next;
+  $('nextStage').textContent = !next ? '' : next.pair ? 'ペア ステージへ ▶' : next.all ? 'ぜんぶ ミックスへ ▶'
+    : next.sec !== STAGES[stageIdx].sec ? (next.sec === 'lower' ? 'こもじに チャレンジ ▶' : next.sec === 'romaji' ? 'ローマじに チャレンジ ▶' : next.sec === 'daku' ? 'てんてん・まるに チャレンジ ▶' : next.sec === 'yoon' ? 'ちいさい ゃゅょに チャレンジ ▶' : next.sec === 'soku' ? 'ちいさい っに チャレンジ ▶' : `おおもじ ${next.letters.join('')} へ ▶`)
+    : 'つぎの ステージへ ▶';
+  show('result'); fanfare(); confetti();
+}
+$('retry').onclick = () => startQuiz();
+let nextIdx = -1;
+$('nextStage').onclick = () => { stageIdx = nextIdx; STAGES[stageIdx].all ? startQuiz() : startLearn(); };
+
+function confetti() {
+  const box = $('confetti'); box.innerHTML = '';
+  const colors = ['#ff6b4a', '#ff9f1c', '#2fb36b', '#3d9bff', '#9b6bff', '#ff5c9a', '#ffbf1f'];
+  for (let i = 0; i < 50; i++) {
+    const p = document.createElement('i');
+    p.style.left = Math.random() * 100 + 'vw';
+    p.style.background = colors[i % colors.length];
+    p.style.animationDuration = 1.8 + Math.random() * 1.8 + 's';
+    p.style.animationDelay = Math.random() * .6 + 's';
+    box.appendChild(p);
+  }
+  setTimeout(() => box.innerHTML = '', 4500);
+}
+
+renderHome();
+</script>
+</body>
+</html>
