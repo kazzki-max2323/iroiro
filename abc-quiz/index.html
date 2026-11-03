@@ -339,11 +339,11 @@ const starHtml = n => [0,1,2].map(i => i < n ? '<span>★</span>' : '<span class
 // and on iPhone it is not silenced by the mute switch the way Web Audio is.
 // One element per channel: once a tap has started it, iOS lets it play again from timers.
 const voiceEl = new Audio(), sfxEl = new Audio();
-for (const n of [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'ok', 'ng', 'clear']) { const a = new Audio(`sounds/${n}.mp3?v=2`); a.preload = 'auto'; }
+for (const n of [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'ok', 'ng', 'clear']) { const a = new Audio(`sounds/${n}.mp3?v=3`); a.preload = 'auto'; }
 
 function play(el, name, onFail) {
   el.pause(); el.muted = false;
-  el.src = `sounds/${name}.mp3?v=2`;
+  el.src = `sounds/${name}.mp3?v=3`;
   const p = el.play();
   if (p && p.catch) p.catch(() => onFail && onFail());
 }
@@ -358,7 +358,7 @@ function speakFallback(letter) {           // last resort if the mp3 can't play
 // So start the effects channel (muted) during the tap that opens the quiz; later plays are then allowed.
 function primeSfx() {
   if (sfxEl.dataset.primed) return;
-  sfxEl.muted = true; sfxEl.src = 'sounds/ok.mp3?v=2';
+  sfxEl.muted = true; sfxEl.src = 'sounds/ok.mp3?v=3';
   const p = sfxEl.play();
   const done = () => { sfxEl.pause(); sfxEl.muted = false; sfxEl.dataset.primed = '1'; };
   p && p.then ? p.then(done, () => { sfxEl.muted = false; }) : done();
