@@ -107,6 +107,7 @@
   .speaker.upper .big.hira.two { font-size: 2.9rem; letter-spacing: -.04em; }
   .speaker.upper .big.hira.three { font-size: 2.2rem; letter-spacing: -.04em; }
   .speaker.upper .big.hira.four { font-size: 1.75rem; letter-spacing: -.04em; }
+  .speaker.silent, .speaker.silent:active { cursor: default; transform: none; box-shadow: 0 8px 0 var(--cd); }
   .speaker.talking { animation: pulse .6s ease-in-out; }
   .prompt { font-size: 1.15rem; min-height: 1.6em; text-align: center; }
   .hint { font-size: 1.6rem; font-weight: 900; color: var(--c); min-height: 1.4em; }
@@ -169,7 +170,7 @@
     <div class="glyph" id="learnGlyph">A</div>
     <div class="kana" id="learnKana">エー</div>
     <div class="pair" id="learnPair" hidden>おおもじは<b></b></div>
-    <div class="tap">🔊 タッチで きこえるよ<br>👆 よこに スワイプで つぎの もじ</div>
+    <div class="tap"><span id="tapSound">🔊 タッチで きこえるよ<br></span>👆 よこに スワイプで つぎの もじ</div>
   </button>
   <div class="learn-nav">
     <button class="arrow push" id="prevBtn" aria-label="まえ">◀</button>
@@ -269,38 +270,13 @@ for (const [w] of SOKU_WORDS) {
 }
 const SSTAGES = [['きって・らっぱ', 0, 8], ['しっぽ・ねっこ', 8, 16], ['ざっし・みっつ', 16, 24]]
   .map(([kana, a, b]) => ({ kana, items: SOKU_WORDS.slice(a, b).map(([w]) => w) }));
-// Long vowels (ちょうおん), spelled as the kana are written (gakkou, sensei) — the way it's typed on a keyboard.
-// short = the long sound forgotten; ear = spelled by sound (gakkoo for がっこう) — the two usual mistakes.
-const CHO_WORDS = [
-  ['okaasan', 'おかあさん', 'okasan'], ['obaasan', 'おばあさん', 'obasan'], ['oniisan', 'おにいさん', 'onisan'],
-  ['ojiisan', 'おじいさん', 'ojisan'], ['chiisai', 'ちいさい', 'chisai'], ['kuuki', 'くうき', 'kuki'],
-  ['suuji', 'すうじ', 'suji'], ['oneesan', 'おねえさん', 'onesan'],
-  ['gakkou', 'がっこう', 'gakko', 'gakkoo'], ['zou', 'ぞう', 'zo', 'zoo'], ['toufu', 'とうふ', 'tofu', 'toofu'],
-  ['otousan', 'おとうさん', 'otosan', 'otoosan'], ['boushi', 'ぼうし', 'boshi', 'booshi'], ['ookii', 'おおきい', 'okii', 'oukii'],
-  ['koori', 'こおり', 'kori', 'kouri'], ['oosama', 'おおさま', 'osama', 'ousama'],
-  ['sensei', 'せんせい', 'sense', 'sensee'], ['tokei', 'とけい', 'toke', 'tokee'], ['kirei', 'きれい', 'kire', 'kiree'],
-  ['kyouryuu', 'きょうりゅう', 'kyoryu', 'kyooryuu'], ['ryokou', 'りょこう', 'ryoko', 'ryokoo'],
-  ['gyuunyuu', 'ぎゅうにゅう', 'gyunyu'], ['kyuuri', 'きゅうり', 'kyuri'], ['shouyu', 'しょうゆ', 'shoyu', 'shooyu'],
-];
-const LONG_RE = /aa|ii|uu|ee|oo|ou|ei/g;
-const CHO = {};
-for (const [w, , short, ear] of CHO_WORDS) {
-  const kind = w.match(LONG_RE)[0];
-  CHO[w] = { short, ear, kind,
-    // school (kunrei) style puts a hat on the vowel instead: gakkô, kyôryû
-    alt: kind === 'ei' ? '' : w.replace(/aa|ii|uu|ee|oo|ou/g, m => ({ aa: 'â', ii: 'î', uu: 'û', ee: 'ê', oo: 'ô', ou: 'ô' })[m]) };
-}
-const CSTAGES = [['おかあさん', 0, 8], ['がっこう', 8, 16], ['せんせい', 16, 24]]
-  .map(([kana, a, b]) => ({ kana, items: CHO_WORDS.slice(a, b).map(([w]) => w) }));
 const DISP = { dji: 'ji', dzu: 'zu' };
 const disp = item => DISP[item] || item;
-const SOUND = { wo: 'o', dji: 'ji', dzu: 'zu' };      // を=お, ぢ=じ, づ=ず
 const HIRA = {}, BASE = {};
 ROWS.forEach(r => r.items.forEach((ro, i) => HIRA[ro] = r.kana[i]));
 DROWS.forEach(r => r.items.forEach((ro, i) => { HIRA[ro] = r.kana[i]; BASE[ro] = ROWS[r.base].items[i]; }));
 for (const [ro, y] of Object.entries(YINFO)) HIRA[ro] = y.kana + y.small;
 for (const [w, kana] of SOKU_WORDS) HIRA[w] = kana;
-for (const [w, kana] of CHO_WORDS) HIRA[w] = kana;
 // Spellings that don't follow "consonant + vowel" — shown on the learn card.
 const SPECIAL = { shi: 'si とも かくよ', chi: 'ti とも かくよ', tsu: 'tu とも かくよ', fu: 'hu とも かくよ',
   wo: 'おとは「お」と おなじ', n: 'n だけで「ん」', ji: 'zi とも かくよ',
@@ -336,15 +312,11 @@ const STAGES = [
   ...SSTAGES.map((r, i) => ({ id: 's' + i, sec: 'soku', letters: r.items, kana: r.kana, c: RC[i], cd: RCD[i],
                               needs: [i ? 's' + (i - 1) : 'y' + (YSTAGES.length - 1)] })),
   { id: 'smix', sec: 'soku', letters: SSTAGES.flatMap(r => r.items), kana: 'ぜんぶ', c: C[5][0], cd: C[5][1], all: true, needs: ['s' + (SSTAGES.length - 1)] },
-  // long vowels open after the っ rows
-  ...CSTAGES.map((r, i) => ({ id: 'c' + i, sec: 'cho', letters: r.items, kana: r.kana, c: RC[i], cd: RCD[i],
-                              needs: [i ? 'c' + (i - 1) : 's' + (SSTAGES.length - 1)] })),
-  { id: 'cmix', sec: 'cho', letters: CSTAGES.flatMap(r => r.items), kana: 'ぜんぶ', c: C[5][0], cd: C[5][1], all: true, needs: ['c' + (CSTAGES.length - 1)] },
 ];
 const SECTIONS = { upper: ['おおもじ', 'ABC'], lower: ['こもじ', 'abc'], romaji: ['ローマじ', 'ka ki ku'],
   daku: ['てんてん・まる', 'ga za pa'], yoon: ['ちいさい ゃゅょ', 'kya sha'],
-  soku: ['ちいさい っ', 'kitte'], cho: ['のばす おと', 'gakkou'] };
-const kanaSec = sec => ['romaji', 'daku', 'yoon', 'soku', 'cho'].includes(sec);
+  soku: ['ちいさい っ', 'kitte'] };
+const kanaSec = sec => ['romaji', 'daku', 'yoon', 'soku'].includes(sec);
 const isRomaji = () => kanaSec(STAGES[stageIdx].sec);
 // weak-letter memory: romaji "a" must not share a slot with lowercase "a"
 const wkey = item => (isRomaji() ? 'r:' : '') + item;
@@ -397,7 +369,7 @@ function onTap(el, fn) {
   el.addEventListener('click', e => { if (e.detail === 0) fn(e); });
 }
 const say = item => {
-  if (isRomaji()) return play(voiceEl, 'ja/' + (SOUND[item] || item));
+  if (isRomaji()) return;   // romaji stages are silent: read the kana, pick the spelling
   const L = item.toUpperCase(); play(voiceEl, L, () => speakFallback(L));
 };
 const chimeOk = () => play(sfxEl, 'ok');
@@ -415,7 +387,6 @@ function setColors(st) { document.body.style.setProperty('--c', st.c); document.
 
 function stageLabel(st) {
   if (st.pair) return { big: 'B → b', sub: 'おおもじと こもじの ペア' };
-  if (st.sec === 'cho') return { big: st.kana, sub: st.all ? 'ぜんぶ ミックス' : st.letters.slice(0, 3).join(' ') + ' …' };
   if (st.sec === 'soku') return { big: st.kana, sub: st.all ? 'ぜんぶ ミックス' : st.letters.slice(0, 3).join(' ') + ' …' };
   if (st.sec === 'yoon') return { big: st.kana, sub: st.all ? 'ぜんぶ ミックス' : st.letters.filter(l => l.endsWith('a')).join(' ') + ' …' };
   if (kanaSec(st.sec)) return { big: st.kana, sub: st.all ? 'ぜんぶ ミックス' : st.letters.map(disp).join(' ') };
@@ -427,7 +398,6 @@ function lockedHint(st) {
   if (st.id === 'd0') return 'ローマじ（あ〜ん）を ぜんぶ クリアしてね';
   if (st.id === 'y0') return 'てんてん・まるを ぜんぶ クリアしてね';
   if (st.id === 's0') return 'ちいさい ゃゅょを ぜんぶ クリアしてね';
-  if (st.id === 'c0') return 'ちいさい っを ぜんぶ クリアしてね';
   if (st.sec === 'lower' && st.needs.some(id => !id.startsWith('l') && !(save.stars[id] > 0)))
     return `${STAGES.find(s => s.id === st.needs.find(id => !id.startsWith('l')))?.letters.join('')} の あとで`;
   return 'まえを クリアしてね';
@@ -467,32 +437,26 @@ function startLearn() {
 }
 function drawLearn(dir = 0) {
   const L = STAGES[stageIdx].letters;
-  const sk = SOKU[L[learnPos]], cw = CHO[L[learnPos]];
-  if (cw) {   // underline the long parts: gakk[ou]
-    $('learnGlyph').innerHTML = L[learnPos].replace(LONG_RE, m => `<span class="dbl">${m}</span>`);
-  } else if (sk) {   // underline the doubled letters: ki[tt]e
+  const sk = SOKU[L[learnPos]];
+  if (sk) {   // underline the doubled letters: ki[tt]e
     const w = L[learnPos];
     $('learnGlyph').innerHTML = `${w.slice(0, sk.at)}<span class="dbl">${w.slice(sk.at, sk.at + 2)}</span>${w.slice(sk.at + 2)}`;
   } else $('learnGlyph').textContent = disp(L[learnPos]);
   const ch = L[learnPos], upper = ch.toUpperCase(), ro = isRomaji();
-  const isWord = !!(SOKU[ch] || CHO[ch]);
+  const isWord = !!SOKU[ch];
   $('learnGlyph').classList.toggle('long', disp(ch).length > 1 && !isWord);
   $('learnGlyph').classList.toggle('word', isWord);
   $('learnGlyph').style.fontSize = isWord && ch.length > 6 ? 'min(13vw, 4.2rem)' : '';
   $('learnKana').style.fontSize = ro && HIRA[ch].length > 3 ? `min(3.4rem, ${66 / HIRA[ch].length}vw)` : '';
   $('learnKana').classList.toggle('hira', ro);
+  $('tapSound').hidden = ro;
   $('learnPair').classList.toggle('romaji', ro);
   if (ro) {
     // "か" big, then how it's built: k + a (or a note for the irregular ones)
     $('learnKana').textContent = HIRA[ch];
     $('learnPair').hidden = false;
-    const y = YINFO[ch], sk2 = SOKU[ch], c2 = CHO[ch];
-    if (c2) {
-      const rule = c2.kind === 'ou' ? '「う」と かいて「おー」と よむ'
-                 : c2.kind === 'ei' ? '「い」と かいて「えー」と よむ'
-                 : 'のばす おとも そのまま かく';
-      $('learnPair').innerHTML = `<small>${rule}</small>` + (c2.alt ? `<small>（${c2.alt} と かく ことも あるよ）</small>` : '');
-    } else if (sk2) {
+    const y = YINFO[ch], sk2 = SOKU[ch];
+    if (sk2) {
       $('learnPair').innerHTML = `<small>「っ」は つぎの もじ「${sk2.letter}」を ２かい</small>`
         + `<small>（「っ」が ないと ${sk2.single}）</small>`;
     } else if (y) {   // き ki ＋ ゃ ya → kya
@@ -610,11 +574,6 @@ function buildQuestions() {
   return best;
 }
 function choicesFor(ans) {
-  if (CHO[ans]) {   // gakkou: forgot the long part (gakko), spelled by ear (gakkoo), + other words
-    const traps = [CHO[ans].short, CHO[ans].ear].filter(Boolean);
-    const others = shuffle(knownPool().filter(w => w !== ans)).slice(0, 3 - traps.length);
-    return shuffle([ans, ...traps, ...others]);
-  }
   if (SOKU[ans]) {   // kitte: the two classic mistakes (kite, kitsute) + another word
     const other = shuffle(knownPool().filter(w => w !== ans))[0];
     return shuffle([ans, SOKU[ans].single, SOKU[ans].tsu, other]);
@@ -656,10 +615,12 @@ function nextQuestion() {
   drawDots(results);
   const pair = STAGES[stageIdx].pair, ro = isRomaji(), sp = $('speaker');
   // pair stage: show the uppercase letter on the button and ask for its lowercase
-  // romaji: show the kana (and play it), pick its romaji
+  // romaji: show the kana (no sound), pick its romaji
   sp.classList.toggle('upper', !!(pair || ro));
+  sp.classList.toggle('silent', ro);
+  sp.setAttribute('aria-label', ro ? HIRA[ans] : 'もういちど きく');
   sp.innerHTML = pair ? `<span class="big">${ans.toUpperCase()}</span><span>🔊</span>`
-               : ro ? `<span class="big hira${['', '', ' two', ' three', ' four'][Math.min(HIRA[ans].length, 4)]}"${HIRA[ans].length > 4 ? ` style="font-size:${Math.floor(112 / HIRA[ans].length)}px"` : ''}>${HIRA[ans]}</span><span>🔊</span>` : '🔊';
+               : ro ? `<span class="big hira${['', '', ' two', ' three', ' four'][Math.min(HIRA[ans].length, 4)]}"${HIRA[ans].length > 4 ? ` style="font-size:${Math.floor(112 / HIRA[ans].length)}px"` : ''}>${HIRA[ans]}</span>` : '🔊';
   $('prompt').textContent = pair ? `${ans.toUpperCase()} の こもじは どれ？` : ro ? `「${HIRA[ans]}」は ローマじで どれ？` : 'どれかな？';
   $('hint').textContent = '';
   const box = $('choices'); box.innerHTML = '';
@@ -677,6 +638,7 @@ function nextQuestion() {
   speak();
 }
 function speak() {
+  if (isRomaji()) return;
   const sp = $('speaker'); sp.classList.remove('talking'); sp.offsetWidth; sp.classList.add('talking');
   say(questions[qi]);
 }
@@ -703,11 +665,11 @@ async function answer(btn, picked, ans) {
     chimeNg();
     if (!wrongThisQ) { save.weak[wkey(ans)] = Math.min(5, (save.weak[wkey(ans)] || 0) + 1); missed.add(ans); persist(); }
     wrongThisQ = true;
-    $('prompt').textContent = STAGES[stageIdx].pair ? 'おしい！ かたちを よく みてね' : 'おしい！ もういちど きいてみよう';
+    $('prompt').textContent = STAGES[stageIdx].pair ? 'おしい！ かたちを よく みてね'
+      : isRomaji() ? 'おしい！ もういちど よく みてね' : 'おしい！ もういちど きいてみよう';
     // hint after a miss: katakana name for letters; for romaji, the first letter (not the whole answer)
     $('hint').textContent = !isRomaji() ? KANA[ans.toUpperCase()]
       : SOKU[ans] ? `「っ」は ${SOKU[ans].letter} を ２かい`
-      : CHO[ans] ? (CHO[ans].kind === 'ou' ? '「う」は u と かくよ' : CHO[ans].kind === 'ei' ? '「い」は i と かくよ' : 'のばす ぶんも かくよ')
       : ans === 'n' ? 'n 1もじだよ' : YINFO[ans] ? `${CONS(ans)} で はじまるよ`
       : CONS(ans) ? `${disp(ans)[0]} で はじまるよ` : 'ぼいん 1もじだよ';
     await wait(500); if (token !== quizToken) return;
@@ -732,7 +694,7 @@ function finish() {
   nextIdx = next ? STAGES.indexOf(next) : -1;
   $('nextStage').hidden = !next;
   $('nextStage').textContent = !next ? '' : next.pair ? 'ペア ステージへ ▶' : next.all ? 'ぜんぶ ミックスへ ▶'
-    : next.sec !== STAGES[stageIdx].sec ? (next.sec === 'lower' ? 'こもじに チャレンジ ▶' : next.sec === 'romaji' ? 'ローマじに チャレンジ ▶' : next.sec === 'daku' ? 'てんてん・まるに チャレンジ ▶' : next.sec === 'yoon' ? 'ちいさい ゃゅょに チャレンジ ▶' : next.sec === 'soku' ? 'ちいさい っに チャレンジ ▶' : next.sec === 'cho' ? 'のばす おとに チャレンジ ▶' : `おおもじ ${next.letters.join('')} へ ▶`)
+    : next.sec !== STAGES[stageIdx].sec ? (next.sec === 'lower' ? 'こもじに チャレンジ ▶' : next.sec === 'romaji' ? 'ローマじに チャレンジ ▶' : next.sec === 'daku' ? 'てんてん・まるに チャレンジ ▶' : next.sec === 'yoon' ? 'ちいさい ゃゅょに チャレンジ ▶' : next.sec === 'soku' ? 'ちいさい っに チャレンジ ▶' : `おおもじ ${next.letters.join('')} へ ▶`)
     : 'つぎの ステージへ ▶';
   show('result'); fanfare(); confetti();
 }
