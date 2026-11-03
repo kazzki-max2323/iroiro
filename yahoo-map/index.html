@@ -4,13 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>住所でヤフーマップ</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<meta name="theme-color" content="#d1243a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="住所マップ">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
   /* Layout: one narrow column; address field, town chips, number helpers, big link button */
   :root {
     --bg: #f5f7f6; --fg: #1d2523; --muted: #5d6a66; --line: #c9d3cf;
     --accent: #d1243a; --accent-fg: #ffffff; --field: #ffffff; --chip: #e6ecea;
-    --font: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    --font: "Hiragino Sans", "Noto Sans JP", "Noto Sans CJK JP", sans-serif;
   }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
     --bg: #161b1a; --fg: #e8eeec; --muted: #9aa8a3; --line: #34403c;
@@ -27,7 +32,10 @@
   input { font: inherit; font-size: 18px; padding: 14px; border: 1px solid var(--line); border-radius: 8px;
     background: var(--field); color: var(--fg); width: 100%; box-sizing: border-box; }
   input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  /* 改行の位置で次の行にするため、行の間は gap ではなく margin で空ける */
+  .chips { display: flex; flex-wrap: wrap; gap: 0 8px; margin-bottom: -8px; }
+  .chips > * { margin-bottom: 8px; }
+  .chips > .row-break { flex-basis: 100%; height: 0; margin: 0; }
   .chips button { font: inherit; font-size: 15px; padding: 10px 14px; border-radius: 999px;
     border: 1px solid var(--line); background: var(--chip); color: var(--fg); cursor: pointer; }
   .chips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
@@ -37,7 +45,10 @@
     border: 1px solid var(--line); background: var(--field); color: var(--fg); cursor: pointer; }
   .tools a.search { flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 8px;
     background: var(--accent); color: var(--accent-fg); font-weight: 700; text-decoration: none; font-size: 16px; }
-  .tools a.search:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .tools a.search:focus-visible, .tools a.gsearch:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .tools a.gsearch { flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--field); color: var(--fg); font-weight: 700; text-decoration: none; font-size: 16px; }
+  .saved a.g { flex: none; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: .8rem; font-weight: 700; }
   .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .clear { font: inherit; font-size: .85rem; background: none; border: none; color: var(--muted);
     text-decoration: underline; cursor: pointer; padding: 4px; }
@@ -48,6 +59,23 @@
   .saved button { font: inherit; font-size: 18px; width: 40px; height: 40px; border: none; background: none;
     color: var(--muted); cursor: pointer; }
   .empty { color: var(--muted); font-size: .9rem; margin: 0; }
+  [hidden] { display: none !important; }
+  .chips button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .chips button.dragging { opacity: .75; transform: scale(1.1); box-shadow: 0 4px 12px rgba(0,0,0,.25);
+    border-color: var(--accent); position: relative; z-index: 1; }
+  .chips.sorting button:not(.dragging) { transition: transform .1s; }
+  @media (prefers-reduced-motion: reduce) { .chips button.dragging { transform: none; } }
+  .chips.editing button { border-style: dashed; }
+  .chips.editing button::after { content: " ×"; color: var(--accent); font-weight: 700; }
+  .chips.editing button.break-chip { flex-basis: 100%; color: var(--muted); background: transparent; font-size: 13px; padding: 4px 14px; }
+  .town-edit { display: grid; gap: 8px; }
+  .line-btn { justify-self: start; font: inherit; font-size: 15px; padding: 8px 14px; border-radius: 999px;
+    border: 1px dashed var(--line); background: var(--field); color: var(--fg); cursor: pointer; }
+  .add-row { display: flex; gap: 8px; margin: 0; }
+  .add-row input { flex: 1; min-width: 0; font-size: 16px; padding: 10px 12px; }
+  .add-row button { font: inherit; font-size: 16px; padding: 10px 16px; border-radius: 8px; border: none;
+    background: var(--accent); color: var(--accent-fg); font-weight: 700; cursor: pointer; }
+  .hint { margin: 0; color: var(--muted); font-size: .85rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
 </style>
 </head>
 <body>
@@ -55,16 +83,38 @@
 <main>
   <h1>住所でヤフーマップ</h1>
   <div class="field">
-    <label for="address">住所</label>
+    <div class="head">
+      <label for="address">住所</label>
+      <button type="button" class="clear" id="editBase">はじめの住所を編集</button>
+    </div>
+    <form class="town-edit" id="baseEdit" hidden>
+      <div class="add-row">
+        <input id="baseInput" type="text" placeholder="例：新潟県新潟市中央区" autocomplete="off">
+        <button type="submit">保存</button>
+      </div>
+      <p class="hint">町名ボタンを押したとき、この住所の後ろに町名が入ります。<button type="button" class="clear" id="resetBase">最初の住所にもどす</button></p>
+    </form>
     <input id="address" type="text" value="新潟県新潟市中央区 " autocomplete="off">
     <div class="tools">
       <button type="button" data-insert="-">−（ハイフン）</button>
-      <a id="search" class="search" href="#" target="_blank" rel="noopener">検索</a>
+      <a id="search" class="search" href="#" target="_blank" rel="noopener">ヤフー</a>
+      <a id="gsearch" class="gsearch" href="#" target="_blank" rel="noopener">Google</a>
     </div>
   </div>
   <div class="field">
-    <span class="label">町名</span>
+    <div class="head">
+      <span class="label">町名</span>
+      <button type="button" class="clear" id="editTowns">編集</button>
+    </div>
     <div class="chips" id="towns"></div>
+    <div class="town-edit" id="townEdit" hidden>
+      <form class="add-row" id="addTownForm">
+        <input id="newTown" type="text" placeholder="追加する町名（例：上大川前通）" autocomplete="off">
+        <button type="submit">追加</button>
+      </form>
+      <button type="button" class="line-btn" id="addBreak">↵ 改行を入れる</button>
+      <p class="hint">× で削除。長押しで動かせます。「改行」を置いた所から次の行になります。<button type="button" class="clear" id="resetTowns">最初の町名にもどす</button></p>
+    </div>
   </div>
   <div class="field">
     <div class="head">
@@ -72,24 +122,53 @@
       <button type="button" class="clear" id="clear" hidden>すべて消す</button>
     </div>
     <ul class="saved" id="saved"></ul>
-    <p class="empty" id="empty">検索した住所がここに残ります。タップするともう一度ヤフーマップで開けます。</p>
+    <p class="empty" id="empty">検索した住所がここに残ります。住所をタップするとヤフーマップ、「Google」でGoogleマップが開きます。</p>
   </div>
 </main>
 
 <script>
-  var PREFIX = '新潟県新潟市中央区 ';
+  var DEFAULT_BASE = '新潟県新潟市中央区';
+  var BASE_KEY = 'yahoo-map-base';
+
+  function loadBase() {
+    try {
+      var v = localStorage.getItem(BASE_KEY);
+      if (v !== null) return v;
+    } catch (e) {}
+    return DEFAULT_BASE;
+  }
+
+  function prefixOf(base) { return base ? base + ' ' : ''; }
+
+  var PREFIX = prefixOf(loadBase());
   var TOWNS = ['東大通り','東万代','蒲原町','花園','明石','長嶺町','弁天','南万代町','春日町','水島町',
                '八千代','幸町','幸西','万代','三和町','天明町','沼垂西','沼垂東'];
   var input = document.getElementById('address');
   var search = document.getElementById('search');
+  var gsearch = document.getElementById('gsearch');
+
+  // Googleマップの公式URL。スマホではGoogleマップアプリで開く
+  function googleUrl(address) {
+    return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(address);
+  }
   var historyList = document.getElementById('saved');
   var empty = document.getElementById('empty');
   var clearBtn = document.getElementById('clear');
   var HISTORY_KEY = 'yahoo-map-saved';
   var HISTORY_MAX = 30;
 
+  var IS_ANDROID = /Android/i.test(navigator.userAgent);
+
   function mapUrl(address) {
+    // Androidでは geo: で地図アプリ（ヤフーマップ）を開く
+    if (IS_ANDROID) return 'geo:0,0?q=' + encodeURIComponent(address);
     return 'https://map.yahoo.co.jp/search?q=' + encodeURIComponent(address);
+  }
+
+  // アプリで開くリンクは新しいタブを作らない
+  function setMapLink(a, address) {
+    a.href = mapUrl(address);
+    if (IS_ANDROID) a.removeAttribute('target'); else a.target = '_blank';
   }
 
   function loadHistory() {
@@ -107,8 +186,7 @@
     saved.forEach(function (address, i) {
       var li = document.createElement('li');
       var a = document.createElement('a');
-      a.href = mapUrl(address);
-      a.target = '_blank';
+      setMapLink(a, address);
       a.rel = 'noopener';
       // 共通の「新潟県新潟市中央区」は省いて表示する
       a.textContent = address.indexOf(PREFIX) === 0 ? address.slice(PREFIX.length) : address;
@@ -121,7 +199,15 @@
         saveHistory(saved);
         renderHistory();
       });
+      var g = document.createElement('a');
+      g.className = 'g';
+      g.href = googleUrl(address);
+      g.target = '_blank';
+      g.rel = 'noopener';
+      g.textContent = 'Google';
+      g.setAttribute('aria-label', address + ' をGoogleマップで開く');
       li.appendChild(a);
+      li.appendChild(g);
       li.appendChild(del);
       historyList.appendChild(li);
     });
@@ -139,6 +225,7 @@
   }
 
   search.addEventListener('click', function () { addHistory(input.value.trim()); });
+  gsearch.addEventListener('click', function () { addHistory(input.value.trim()); });
   clearBtn.addEventListener('click', function () {
     saved = [];
     saveHistory(saved);
@@ -148,7 +235,8 @@
 
   function update() {
     var address = input.value.trim();
-    search.href = mapUrl(address);
+    setMapLink(search, address);
+    gsearch.href = googleUrl(address);
   }
 
   // ボタンを押しても入力欄のフォーカス（キーボード）が外れないようにする
@@ -163,23 +251,204 @@
     input.setSelectionRange(len, len);
   }
 
-  TOWNS.forEach(function (name) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = name;
-    b.setAttribute('aria-pressed', 'false');
-    keepFocus(b);
-    b.addEventListener('click', function () {
-      towns.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
-      b.setAttribute('aria-pressed', 'true');
-      input.value = PREFIX + name;
-      // 数字キーボードに切り替える（表示中のキーボードを切り替えるため一度フォーカスを外す）
-      input.setAttribute('inputmode', 'numeric');
-      input.blur();
-      focusEnd();
-      update();
+  var TOWNS_KEY = 'yahoo-map-towns';
+  var editTownsBtn = document.getElementById('editTowns');
+  var townEdit = document.getElementById('townEdit');
+  var addTownForm = document.getElementById('addTownForm');
+  var newTown = document.getElementById('newTown');
+  var editing = false;
+
+  function loadTowns() {
+    try {
+      var list = JSON.parse(localStorage.getItem(TOWNS_KEY));
+      if (Array.isArray(list)) return list;
+    } catch (e) {}
+    return TOWNS.slice();
+  }
+
+  function saveTowns() {
+    try { localStorage.setItem(TOWNS_KEY, JSON.stringify(townList)); } catch (e) {}
+  }
+
+  var townList = loadTowns();
+
+  // 町名の並びに入れる「改行」の印
+  var BREAK = '\n';
+
+  function renderTowns() {
+    towns.textContent = '';
+    towns.classList.toggle('editing', editing);
+    townList.forEach(function (name, i) {
+      if (name === BREAK && !editing) {
+        var br = document.createElement('span');
+        br.className = 'row-break';
+        br.dataset.name = BREAK;
+        towns.appendChild(br);
+        return;
+      }
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.name = name;
+      if (editing) {
+        // 編集中は改行も ×（削除）つきのボタンで見せて、残りと一緒に長押しで動かせる
+        if (name === BREAK) {
+          b.className = 'break-chip';
+          b.textContent = '↵ 改行';
+          b.setAttribute('aria-label', '改行を削除');
+        } else {
+          b.textContent = name;
+          b.setAttribute('aria-label', name + ' を削除');
+        }
+        towns.appendChild(b);
+        b.addEventListener('click', function () {
+          if (justDragged) return;
+          townList.splice(i, 1);
+          saveTowns();
+          renderTowns();
+        });
+        return;
+      }
+      b.textContent = name;
+      b.setAttribute('aria-pressed', input.value === PREFIX + name ? 'true' : 'false');
+      keepFocus(b);
+      b.addEventListener('click', function () {
+        if (justDragged) return;
+        towns.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
+        b.setAttribute('aria-pressed', 'true');
+        input.value = PREFIX + name;
+        // 数字キーボードに切り替える（表示中のキーボードを切り替えるため一度フォーカスを外す）
+        input.setAttribute('inputmode', 'numeric');
+        input.blur();
+        focusEnd();
+        update();
+      });
+      towns.appendChild(b);
     });
-    towns.appendChild(b);
+  }
+
+  // 町名ボタンを長押しすると、指で動かして並べかえられる
+  var LONG_PRESS_MS = 450;
+  var drag = null;
+  var justDragged = false;
+
+  function endDrag() {
+    if (!drag) return;
+    clearTimeout(drag.timer);
+    if (drag.active) {
+      drag.el.classList.remove('dragging');
+      towns.classList.remove('sorting');
+      townList = Array.prototype.map.call(towns.children, function (el) { return el.dataset.name; });
+      saveTowns();
+      justDragged = true;
+      setTimeout(function () { justDragged = false; }, 0);
+    }
+    drag = null;
+  }
+
+  towns.addEventListener('pointerdown', function (e) {
+    var b = e.target.closest('button');
+    if (!b || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    drag = { el: b, x: e.clientX, y: e.clientY, active: false };
+    drag.timer = setTimeout(function () {
+      if (!drag) return;
+      drag.active = true;
+      b.classList.add('dragging');
+      towns.classList.add('sorting');
+      if (navigator.vibrate) { try { navigator.vibrate(30); } catch (err) {} }
+    }, LONG_PRESS_MS);
+  });
+
+  document.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    if (!drag.active) {
+      // 長押しの前に指が動いたらスクロールとみなしてやめる
+      if (Math.abs(e.clientX - drag.x) > 10 || Math.abs(e.clientY - drag.y) > 10) { clearTimeout(drag.timer); drag = null; }
+      return;
+    }
+    var over = document.elementFromPoint(e.clientX, e.clientY);
+    over = over && over.closest('#towns button');
+    if (!over || over === drag.el) return;
+    var kids = Array.prototype.indexOf.bind(towns.children);
+    towns.insertBefore(drag.el, kids(over) > kids(drag.el) ? over.nextSibling : over);
+  });
+
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', endDrag);
+  // 動かしている間は画面がスクロールしないようにする
+  towns.addEventListener('touchmove', function (e) { if (drag && drag.active) e.preventDefault(); }, { passive: false });
+  towns.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  editTownsBtn.addEventListener('click', function () {
+    editing = !editing;
+    editTownsBtn.textContent = editing ? '完了' : '編集';
+    townEdit.hidden = !editing;
+    renderTowns();
+  });
+
+  addTownForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = newTown.value.trim();
+    if (name && townList.indexOf(name) === -1) {
+      townList.push(name);
+      saveTowns();
+      renderTowns();
+    }
+    newTown.value = '';
+    newTown.focus();
+  });
+
+  document.getElementById('addBreak').addEventListener('click', function () {
+    townList.push(BREAK);
+    saveTowns();
+    renderTowns();
+  });
+
+  document.getElementById('resetTowns').addEventListener('click', function () {
+    townList = TOWNS.slice();
+    saveTowns();
+    renderTowns();
+  });
+
+  renderTowns();
+
+  var editBaseBtn = document.getElementById('editBase');
+  var baseEdit = document.getElementById('baseEdit');
+  var baseInput = document.getElementById('baseInput');
+
+  function setBase(base) {
+    var oldPrefix = PREFIX;
+    PREFIX = prefixOf(base);
+    try { localStorage.setItem(BASE_KEY, base); } catch (e) {}
+    // 入力欄の住所の頭も新しい住所に入れかえる
+    if (input.value.indexOf(oldPrefix) === 0) input.value = PREFIX + input.value.slice(oldPrefix.length);
+    else if (!input.value.trim()) input.value = PREFIX;
+    update();
+    renderTowns();
+    renderHistory();
+  }
+
+  function closeBaseEdit() {
+    baseEdit.hidden = true;
+    editBaseBtn.textContent = 'はじめの住所を編集';
+  }
+
+  editBaseBtn.addEventListener('click', function () {
+    if (!baseEdit.hidden) { closeBaseEdit(); return; }
+    baseInput.value = PREFIX.trim();
+    baseEdit.hidden = false;
+    editBaseBtn.textContent = 'やめる';
+    baseInput.focus();
+  });
+
+  baseEdit.addEventListener('submit', function (e) {
+    e.preventDefault();
+    setBase(baseInput.value.trim());
+    closeBaseEdit();
+  });
+
+  document.getElementById('resetBase').addEventListener('click', function () {
+    setBase(DEFAULT_BASE);
+    closeBaseEdit();
   });
 
   document.querySelectorAll('[data-insert]').forEach(function (b) {
@@ -192,8 +461,13 @@
   });
 
   input.addEventListener('input', update);
+  input.value = PREFIX;
   update();
   renderHistory();
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  }
 </script>
 </body>
 </html>
